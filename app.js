@@ -3,16 +3,50 @@ import {mapSvg,circuitSvg,timingSvg,colors} from './svg.js';
 const $=id=>document.getElementById(id);
 let n=3,values=[0,1,1,1,0,0,1,1],result=null,form='minimal',worker=null,revision=0,svg='';
 let diagramRevision=0;
+const zoomLevels={map:100,diagram:100,timing:100};
+function applyZoom(id){
+  const image=$(id).querySelector('svg');
+  if(!image)return;
+  const box=image.viewBox.baseVal,scale=zoomLevels[id]/100;
+  Object.assign(image.style,{width:`${box.width*scale}px`,height:`${box.height*scale}px`,minWidth:'0',maxWidth:'none',maxHeight:'none',flexShrink:'0'});
+}
+function setupZoom(){
+  for(const [id,name] of [['map','Karnaugh map'],['diagram','Logic circuit'],['timing','Timing diagram']]){
+    const control=document.createElement('div');control.className='zoom-control';
+    control.innerHTML=`<label for="${id}-zoom">Zoom<span class="sr-only"> ${name}</span></label><input id="${id}-zoom" type="range" min="25" max="200" step="5" value="100" aria-valuetext="100 percent"><output id="${id}-zoom-value" for="${id}-zoom">100%</output><button class="text-button" aria-label="Reset ${name.toLowerCase()} zoom">Reset</button>`;
+    $(id).after(control);
+    const slider=control.querySelector('input'),output=control.querySelector('output');
+    const change=()=>{zoomLevels[id]=Number(slider.value);output.textContent=`${slider.value}%`;slider.setAttribute('aria-valuetext',`${slider.value} percent`);applyZoom(id)};
+    slider.addEventListener('input',change);control.querySelector('button').onclick=()=>{slider.value='100';change()};
+  }
+}
 const descriptions={minimal:['Minimum sum of products','Exact cover: fewest product terms, then fewest literals. Loops on the map correspond to these terms.'],dnf:['Canonical disjunctive normal form','One product term for every row whose output is 1. AND is juxtaposition; OR is addition.'],cnf:['Canonical conjunctive normal form','One sum clause for every row whose output is 0. AND is juxtaposition; OR is addition.'],nand:['NAND-only implementation','The minimized sum of products transformed with De Morgan’s law. A repeated input implements inversion.'],nor:['NOR-only implementation','The minimized product of sums transformed with De Morgan’s law. A repeated input implements inversion.']};
 function table(){
   $('truth-table').querySelector('thead').innerHTML=`<tr><th scope="col">i</th>${names(n).map(v=>`<th scope="col">${v}</th>`).join('')}<th scope="col">f</th></tr>`;
   $('truth-table').querySelector('tbody').innerHTML=values.map((v,i)=>`<tr><td>${i}</td>${names(n).map((_,j)=>`<td>${(i>>(n-1-j))&1}</td>`).join('')}<td><button class="bit ${v?'on':''}" data-index="${i}" aria-label="Row ${i}, output ${v}. Toggle output." aria-pressed="${!!v}">${v}</button></td></tr>`).join('');
   $('row-count').textContent=`${values.length} rows`;$('variables').value=n;$('minus').disabled=n===1;$('plus').disabled=n===8;
 }
-function map(){ $('map').innerHTML=mapSvg(n,values,result?.ones||[]);$('legend').replaceChildren();if(result){result.ones.forEach((c,i)=>{const item=document.createElement('span');item.className='legend-item';const dot=document.createElement('i');dot.style.background=colors[i%colors.length];item.append(dot,document.createTextNode(expression(sop(n,[c]))));$('legend').append(item)})} }
+const mathSource=source=>'`'+source+'`';
+function map(){
+  $('map').innerHTML=mapSvg(n,values,result?.ones||[]);applyZoom('map');
+  try{window.MathJax?.typesetClear?.([$('legend')])}catch{}
+  $('legend').replaceChildren();
+  if(result)result.ones.forEach((c,i)=>{
+    const item=document.createElement('span');item.className='legend-item';
+    const dot=document.createElement('i');dot.style.background=colors[i%colors.length];
+    const term=document.createElement('span');term.textContent=mathSource(expression(sop(n,[c])));
+    item.append(dot,term);$('legend').append(item);
+  });
+}
 function palette(){const style=getComputedStyle(document.documentElement);return Object.fromEntries(['text','muted','line','accent','bg'].map(k=>[k,style.getPropertyValue('--'+(k==='bg'?'panel':k)).trim()]))}
-function timing(){ $('timing').innerHTML=timingSvg(n,values,palette()) }
-async function typeset(){try{if(window.MathJax?.startup?.promise){await window.MathJax.startup.promise;await window.MathJax.typesetPromise?.([$('formula')])}}catch{/* Source remains readable if the CDN is unavailable. */}}
+function timing(){ $('timing').innerHTML=timingSvg(n,values,palette());applyZoom('timing') }
+let mathQueue=Promise.resolve();
+function typeset(){
+  mathQueue=mathQueue.then(async()=>{
+    if(window.MathJax?.startup?.promise){await window.MathJax.startup.promise;await window.MathJax.typesetPromise?.([$('formula'),$('legend')])}
+  }).catch(()=>{/* Source remains readable if the CDN is unavailable. */});
+  return mathQueue;
+}
 async function renderForm(){
   const drawing=++diagramRevision;
   $('expression-content').setAttribute('aria-labelledby','tab-'+form);
@@ -21,9 +55,9 @@ async function renderForm(){
   $('copy').disabled=!result;$('download').disabled=true;
   try{window.MathJax?.typesetClear?.([$('formula')])}catch{}
   if(!result){$('formula').textContent='Computing exact cover…';$('source').textContent='';$('diagram').replaceChildren();return}
-  const source='f = '+expression(result.forms[form]);$('source').textContent=source;$('formula').textContent='`'+source+'`';
+  const source='f = '+expression(result.forms[form]);$('source').textContent=source;$('formula').textContent=mathSource(source);
   typeset();$('diagram').textContent='Routing circuit wires…';
-  try{const rendered=await circuitSvg(result.forms[form],palette());if(drawing!==diagramRevision)return;svg=rendered;$('diagram').innerHTML=svg;$('download').disabled=false}catch(error){if(drawing!==diagramRevision)return;$('diagram').textContent='Circuit layout failed. Reload to retry.';console.error(error)}
+  try{const rendered=await circuitSvg(result.forms[form],palette());if(drawing!==diagramRevision)return;svg=rendered;$('diagram').innerHTML=svg;applyZoom('diagram');$('download').disabled=false}catch(error){if(drawing!==diagramRevision)return;$('diagram').textContent='Circuit layout failed. Reload to retry.';console.error(error)}
 }
 function update(){
   const id=++revision;worker?.terminate();result=null;table();map();timing();renderForm();
@@ -47,4 +81,4 @@ $('theme').onclick=()=>{document.documentElement.dataset.theme=document.document
 $('copy').onclick=async()=>{const source=$('source').textContent;try{await navigator.clipboard.writeText(source);$('copy').textContent='Copied';setTimeout(()=>$('copy').textContent='Copy ASCIIMath',1500)}catch{$('source').parentElement.open=true;const selection=window.getSelection(),range=document.createRange();range.selectNodeContents($('source'));selection.removeAllRanges();selection.addRange(range);$('status').textContent='ASCIIMath selected. Press Ctrl+C / ⌘C to copy.'}};
 $('download').onclick=()=>{const blob=new Blob([svg],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`karnaugh-${n}-${form}.svg`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('download-timing').onclick=()=>{const url=URL.createObjectURL(new Blob([timingSvg(n,values,palette())],{type:'image/svg+xml'})),link=document.createElement('a');link.href=url;link.download=`karnaugh-${n}-timing.svg`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
-themeLabel();update();window.addEventListener('load',()=>{if(result)typeset()});
+setupZoom();themeLabel();update();window.addEventListener('load',()=>{if(result)typeset()});
