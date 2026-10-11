@@ -57,7 +57,7 @@ async function renderForm(){
   if(!result){$('formula').textContent='Computing exact cover…';$('source').textContent='';$('diagram').replaceChildren();return}
   const source='f = '+expression(result.forms[form]);$('source').textContent=source;$('formula').textContent=mathSource(source);
   typeset();$('diagram').textContent='Routing circuit wires…';
-  try{const rendered=await circuitSvg(result.forms[form],palette());if(drawing!==diagramRevision)return;svg=rendered;$('diagram').innerHTML=svg;applyZoom('diagram');$('download').disabled=false}catch(error){if(drawing!==diagramRevision)return;$('diagram').textContent='Circuit layout failed. Reload to retry.';console.error(error)}
+  try{const rendered=await circuitSvg(result.forms[form],palette(),n);if(drawing!==diagramRevision)return;svg=rendered;$('diagram').innerHTML=svg;applyZoom('diagram');$('download').disabled=false}catch(error){if(drawing!==diagramRevision)return;$('diagram').textContent='Circuit layout failed. Reload to retry.';console.error(error)}
 }
 function update(){
   const id=++revision;worker?.terminate();result=null;table();map();timing();renderForm();

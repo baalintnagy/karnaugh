@@ -28,6 +28,7 @@ After adding your remote, push this repository. In GitHub **Settings → Pages**
 - AND in formulas is denoted by juxtaposition, with OR denoted by +.
 - The timing diagram shows all inputs and output f across ascending truth-table rows, with equal ideal time intervals and no propagation delay. It updates immediately and can be downloaded as SVG.
 - Diagrams use SVG with shared identical subexpressions and multi-input gates. ELK routes orthogonal wires between explicit, fixed pins around gate bodies. Dots mark connected branches; wire jumps mark crossings without connections. Download the selected circuit from any expression tab.
+- Inputs use separate vertical rails ordered A–H from left to right. Each used rail has marked taps feeding the gates; unused inputs remain labeled. Large fan-outs share up to four taps per variable, with additional connected branches routed by ELK. The fixed input bank preserves rail order while ELK can rearrange gates to reduce crossings.
 - Exact minimization is exponential in the worst case. A worker keeps the page interactive; changing the truth table cancels the previous solve.
 
 ASCIIMath is rendered by MathJax 3.2.2 from jsDelivr. Fonts load from Google Fonts. When offline, raw ASCIIMath and system fonts remain available; solving and SVG generation are entirely local. Copyable ASCIIMath source is available beneath each formula.

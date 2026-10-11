@@ -1,23 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {circuitGraph,layoutCircuit} from '../circuit.js';
+import {circuitGraph,layoutCircuit,renderCircuit} from '../circuit.js';
 import {solve,evaluate} from '../logic.js';
 const near=(a,b)=>Math.abs(a-b)<.001;
 function evalGraph(graph,n,row){
  const results=new Map();
  for(const node of graph.children){
-  const inputs=node.ports.filter(p=>p.id.endsWith('-in')||p.id.includes('-in-')).map(p=>{const edge=graph.edges.find(e=>e.targets[0]===p.id);assert.ok(edge,`missing input ${p.id}`);return results.get(edge.sources[0].replace(/-out$/,''))});
+  if(node.type==='BUS'){for(const p of node.ports)results.set(p.id,(row>>(n-1-(p.name.charCodeAt(0)-65)))&1);continue}
+  const inputs=node.ports.filter(p=>p.id.endsWith('-in')||p.id.includes('-in-')).map(p=>{const edge=graph.edges.find(e=>e.targets[0]===p.id);assert.ok(edge,`missing input ${p.id}`);return results.get(edge.sources[0])});
   let value;
   switch(node.type){case 'INPUT':value=(row>>(n-1-(node.name.charCodeAt(0)-65)))&1;break;case 'CONST':value=node.value;break;case 'OUTPUT':value=inputs[0];break;case 'NOT':value=1-inputs[0];break;case 'AND':value=+inputs.every(Boolean);break;case 'OR':value=+inputs.some(Boolean);break;case 'NAND':value=+!inputs.every(Boolean);break;case 'NOR':value=+!inputs.some(Boolean);break;case 'XOR':value=inputs.reduce((a,b)=>a^b,0);break}
-  assert.ok(value===0||value===1);results.set(node.id,value);
+  assert.ok(value===0||value===1);results.set(node.id+'-out',value);
  }
- return results.get('output');
+ return results.get('output-out');
 }
 test('rendered netlist implements every truth table through three variables, including tied NAND/NOR pins',()=>{
  for(let n=1;n<=3;n++)for(let order=0;order<2**(2**n);order++){
   const values=Array.from({length:2**n},(_,i)=>(order>>i)&1),forms=solve(n,values).forms;
   for(const form of ['minimal','dnf','cnf','nand','nor']){const graph=circuitGraph(forms[form]);for(let i=0;i<values.length;i++)assert.equal(evalGraph(graph,n,i),values[i],`${form} row ${i}`)}
  }
+});
+test('input bus keeps A–H in order, retains unused inputs, and preserves tied gate inputs',async()=>{
+ const values=Array.from({length:256},(_,i)=>(i>>7)&1),tree=solve(8,values).forms.minimal;
+ const graph=await layoutCircuit(tree,8),bus=graph.children.find(node=>node.type==='BUS');
+ assert.deepEqual(bus.inputNames,['A','B','C','D','E','F','G','H']);
+ assert.deepEqual(bus.ports.map(p=>p.name),['A']);
+ for(let i=0;i<256;i++)assert.equal(evalGraph(graph,8,i),values[i]);
+ const svg=renderCircuit(graph,{text:'#fff',muted:'#999',line:'#555',accent:'#afa',bg:'#111'});
+ assert.deepEqual([...svg.matchAll(/data-input-rail="([A-H])"/g)].map(m=>m[1]),bus.inputNames);
+ assert.ok(svg.includes('data-junction="true"'));
+ const nand=circuitGraph(solve(2,[0,0,0,1]).forms.nand,2);
+ for(let i=0;i<4;i++)assert.equal(evalGraph(nand,2,i),+(i===3));
+ const constant=await layoutCircuit(solve(2,[1,1,1,1]).forms.minimal,2);
+ assert.deepEqual(constant.children.find(node=>node.type==='BUS').inputNames,['A','B']);
+ for(let i=0;i<4;i++)assert.equal(evalGraph(constant,2,i),1);
 });
 test('ELK routes each wire between its exact pins without passing through gate bodies',async()=>{
  const tables=[[0,1,1,1,0,0,1,1],[0,1,1,0,1,0,0,1],Array.from({length:256},(_,i)=>(i>>7)&1)];
