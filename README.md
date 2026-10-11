@@ -15,7 +15,17 @@ Open http://127.0.0.1:4173. Serve over HTTP rather than opening `index.html` dir
 
 ## GitHub Pages
 
-After adding your remote, push this repository. In GitHub **Settings → Pages**, select **Deploy from a branch**, your branch, and **/ (root)**. All asset paths are relative, so both repository and user Pages work. `.nojekyll` disables Jekyll processing. No credentials, install, or build are required for deployment.
+The `Deploy GitHub Pages` workflow tests and publishes the site on every push to `master`. It can also be run manually from the Actions tab. Deployment uses the repository's GitHub token; no secrets are required. Only the static page, JavaScript modules, styles, and vendored ELK runtime/license are published.
+
+One-time repository setup: in GitHub **Settings → Pages → Build and deployment → Source**, choose **GitHub Actions**. Then commit and push:
+
+```sh
+git add .github/workflows/pages.yml .gitignore README.md
+git commit -m "Configure automatic GitHub Pages deployment"
+git push -u origin master
+```
+
+The site will be available at https://baalintnagy.github.io/karnaugh/ after the workflow succeeds. All asset and worker paths are relative, so repository Pages work without configuration. If the default branch is renamed, update the workflow's branch filter too.
 
 ## Conventions
 
