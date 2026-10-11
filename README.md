@@ -15,14 +15,14 @@ Open http://127.0.0.1:4173. Serve over HTTP rather than opening `index.html` dir
 
 ## GitHub Pages
 
-The `Deploy GitHub Pages` workflow tests and publishes the site on every push to `master`. It can also be run manually from the Actions tab. Deployment uses the repository's GitHub token; no secrets are required. Only the static page, JavaScript modules, styles, and vendored ELK runtime/license are published.
+The `Deploy GitHub Pages` workflow tests and publishes the site on every push to `main`. It can also be run manually from the Actions tab. Deployment uses the repository's GitHub token; no secrets are required. Only the static page, JavaScript modules, styles, and vendored ELK runtime/license are published.
 
 One-time repository setup: in GitHub **Settings → Pages → Build and deployment → Source**, choose **GitHub Actions**. Then commit and push:
 
 ```sh
 git add .github/workflows/pages.yml .gitignore README.md
 git commit -m "Configure automatic GitHub Pages deployment"
-git push -u origin master
+git push -u origin main
 ```
 
 The site will be available at https://baalintnagy.github.io/karnaugh/ after the workflow succeeds. All asset and worker paths are relative, so repository Pages work without configuration. If the default branch is renamed, update the workflow's branch filter too.
