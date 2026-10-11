@@ -2,6 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {solve,evaluate,minimize,matches,orderNumber,popcount,gray,expression} from '../logic.js';
 import {mapSvg,circuitSvg,timingSignals,timingSvg} from '../svg.js';
+test('split map groups use open half-loops at matching opposite edges',()=>{
+ const horizontal=mapSvg(4,Array(16).fill(1),[{bits:0,mask:2}]);
+ assert.ok(horizontal.includes('data-continuation="west"'));
+ assert.ok(horizontal.includes('data-continuation="east"'));
+ assert.equal((horizontal.match(/data-map-group="1"/g)||[]).length,2);
+ const corners=mapSvg(4,Array(16).fill(1),[{bits:0,mask:10}]);
+ for(const sides of ['north west','north east','south west','east south'])assert.ok(corners.includes(`data-continuation="${sides}"`),sides);
+ assert.equal((corners.match(/data-map-group="1"/g)||[]).length,4);
+ assert.ok(!horizontal.includes('stroke-dasharray'));
+ assert.ok(horizontal.includes(' A'));
+});
 function equivalent(n,values){const result=solve(n,values);for(const [name,tree] of Object.entries(result.forms))for(let i=0;i<values.length;i++)assert.equal(evaluate(tree,n,i),values[i],`${name}, n=${n}, row=${i}`);return result}
 test('every Boolean function with up to three inputs: all six forms are equivalent',()=>{for(let n=1;n<=3;n++)for(let order=0;order<2**(2**n);order++)equivalent(n,Array.from({length:2**n},(_,i)=>(order>>i)&1))});
 test('minimum cover agrees with an independent exhaustive cube-cover oracle for three inputs',()=>{
