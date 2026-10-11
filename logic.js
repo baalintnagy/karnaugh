@@ -1,7 +1,7 @@
 export const names = n => Array.from({length:n},(_,i)=>String.fromCharCode(65+i));
 export const popcount = x => {let n=0;while(x){x&=x-1;n++}return n};
 export const matches = (cube,i) => (i & ~cube.mask) === cube.bits;
-export const orderNumber = values => values.reduce((sum,v,i)=>v?sum+(1n<<BigInt(i)):sum,0n).toString();
+export const orderNumber = values => values.includes('X')?null:values.reduce((sum,v,i)=>v===1?sum+(1n<<BigInt(i)):sum,0n).toString();
 export const gray = bits => Array.from({length:2**bits},(_,i)=>i^(i>>1));
 
 // Quine–McCluskey prime generation followed by an exact prime-chart cover.
@@ -9,8 +9,8 @@ export const gray = bits => Array.from({length:2**bits},(_,i)=>i^(i>>1));
 export function minimize(n, values, target=1){
   const indices=values.flatMap((v,i)=>v===target?[i]:[]);
   if(!indices.length)return [];
-  let current=indices.map(bits=>({bits,mask:0}));
-  const primes=[];
+  let current=values.flatMap((v,bits)=>v===target||v==='X'?[{bits,mask:0}]:[]);
+  let primes=[];
   while(current.length){
     const used=new Set(), next=new Map(), lookup=new Map(current.map((c,i)=>[`${c.mask}:${c.bits}`,i]));
     current.forEach((c,i)=>{
@@ -23,6 +23,7 @@ export function minimize(n, values, target=1){
     current.forEach((c,i)=>{if(!used.has(i))primes.push(c)});
     current=[...next.values()];
   }
+  primes=primes.filter(c=>indices.some(i=>matches(c,i)));
   const covers=primes.map(c=>indices.reduce((b,i,j)=>matches(c,i)?b|(1n<<BigInt(j)):b,0n));
   let chart=indices.map((_,j)=>covers.flatMap((b,i)=>b&(1n<<BigInt(j))?[i]:[]));
   const literals=primes.map(c=>n-popcount(c.mask));
@@ -111,5 +112,5 @@ export function evaluate(tree,n,i){
 }
 export function solve(n,values){
   const ones=minimize(n,values),zeros=minimize(n,values,0),minimal=sop(n,ones),minimalPos=pos(n,zeros);
-  return {ones,zeros,forms:{minimal,dnf:sop(n,values.flatMap((v,bits)=>v?[{bits,mask:0}]:[])),cnf:pos(n,values.flatMap((v,bits)=>v?[]:[{bits,mask:0}])),nand:universal(minimal,'NAND'),nor:universal(minimalPos,'NOR'),xor:anf(n,values)}};
+  return {ones,zeros,forms:{minimal,dnf:sop(n,values.flatMap((v,bits)=>v===1?[{bits,mask:0}]:[])),cnf:pos(n,values.flatMap((v,bits)=>v===0?[{bits,mask:0}]:[])),nand:universal(minimal,'NAND'),nor:universal(minimalPos,'NOR'),xor:anf(n,values.map(v=>v==='X'?0:v))}};
 }

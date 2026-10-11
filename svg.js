@@ -16,19 +16,28 @@ export function timingSvg(n,values,palette){
   signals.forEach((signal,j)=>{
     const high=top+j*row,low=high+28,color=signal.name==='f'?accent:text;
     body+=`<text x="20" y="${high+19}" fill="${color}" font-size="14" font-weight="600">${signal.name}</text><text x="48" y="${high+4}" fill="${muted}" font-size="8">1</text><text x="48" y="${low+4}" fill="${muted}" font-size="8">0</text>`;
-    let path=`M${left},${signal.values[0]?high:low}`;
-    signal.values.forEach((v,i)=>{const y=v?high:low;if(i&&v!==signal.values[i-1])path+=` V${y}`;path+=` H${left+(i+1)*slot}`});
-    body+=`<g data-signal="${signal.name}"><title>${signal.name}: ${signal.values.join(' ')}</title><path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/></g>`;
+    let path='',unknown='';
+    signal.values.forEach((v,i)=>{
+      const x=left+i*slot;
+      if(v==='X'){
+        unknown+=`<g data-unknown-row="${i}"><rect x="${x}" y="${high}" width="${slot}" height="28" fill="${color}" fill-opacity=".1"/><path d="M${x},${high} L${x+slot},${low} M${x},${low} L${x+slot},${high}" stroke="${color}" stroke-width="1"/><text x="${x+slot/2}" y="${low+13}" text-anchor="middle" fill="${color}" font-size="9">X</text></g>`;return;
+      }
+      const y=v===1?high:low;
+      if(i===0||signal.values[i-1]==='X')path+=` M${x},${y}`;
+      else if(v!==signal.values[i-1])path+=` V${y}`;
+      path+=` H${x+slot}`;
+    });
+    body+=`<g data-signal="${signal.name}"><title>${signal.name}: ${signal.values.join(' ')}</title>${unknown}<path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/></g>`;
   });
   body+=`<text x="${left}" y="${height-8}" fill="${muted}" font-size="10">Time → (equal intervals, ascending truth-table rows)</text>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Timing diagram of ${names(n).join(', ')} and output f across all ${values.length} truth-table rows" font-family="system-ui,sans-serif"><desc>Ideal signals with no propagation delay. Each interval corresponds to one truth-table row in binary input order. High is 1 and low is 0.</desc>${body}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Timing diagram of ${names(n).join(', ')} and output f across all ${values.length} truth-table rows" font-family="system-ui,sans-serif"><desc>Ideal signals with no propagation delay. Each interval corresponds to one truth-table row in binary input order. High is 1 and low is 0. Crossed X bands indicate unspecified outputs.</desc>${body}</svg>`;
 }
 export function mapSvg(n,values,cubes=[]){
   const rb=Math.floor(n/2),cb=n-rb,rows=gray(rb),cols=gray(cb),cell=52,left=66,top=48,width=left+cols.length*cell+20,height=top+rows.length*cell+20;
   const label=(i,b)=>b?i.toString(2).padStart(b,'0'):'–';
   let body=`<text x="12" y="19" fill="var(--muted)" font-size="10">${esc(Array.from({length:rb},(_,i)=>String.fromCharCode(65+i)).join('')||'–')} / ${esc(Array.from({length:cb},(_,i)=>String.fromCharCode(65+rb+i)).join(''))}</text>`;
   cols.forEach((c,j)=>body+=`<text x="${left+(j+.5)*cell}" y="30" text-anchor="middle" fill="var(--muted)" font-size="11">${label(c,cb)}</text>`);
-  rows.forEach((r,k)=>{body+=`<text x="45" y="${top+(k+.5)*cell+4}" text-anchor="end" fill="var(--muted)" font-size="11">${label(r,rb)}</text>`;cols.forEach((c,j)=>{const i=(r<<cb)|c;body+=`<g class="map-cell" role="button" tabindex="0" data-index="${i}" aria-label="Minterm ${i}, output ${values[i]}. Toggle output."><title>m${i}: ${label(i,n)} → ${values[i]}</title><rect class="cell-bg" x="${left+j*cell}" y="${top+k*cell}" width="${cell}" height="${cell}" fill="var(--panel)" stroke="var(--line)"/><text x="${left+j*cell+7}" y="${top+k*cell+12}" font-size="8" fill="var(--muted)">${i}</text><text x="${left+(j+.5)*cell}" y="${top+(k+.5)*cell+7}" text-anchor="middle" font-size="20" fill="${values[i]?'var(--accent)':'var(--muted)'}">${values[i]}</text></g>`})});
+  rows.forEach((r,k)=>{body+=`<text x="45" y="${top+(k+.5)*cell+4}" text-anchor="end" fill="var(--muted)" font-size="11">${label(r,rb)}</text>`;cols.forEach((c,j)=>{const i=(r<<cb)|c;body+=`<g class="map-cell" role="button" tabindex="0" data-index="${i}" aria-label="Minterm ${i}, output ${values[i]}. Cycle 0, 1, X."><title>m${i}: ${label(i,n)} → ${values[i]}</title><rect class="cell-bg" x="${left+j*cell}" y="${top+k*cell}" width="${cell}" height="${cell}" fill="var(--panel)" stroke="var(--line)"/><text x="${left+j*cell+7}" y="${top+k*cell+12}" font-size="8" fill="var(--muted)">${i}</text><text x="${left+(j+.5)*cell}" y="${top+(k+.5)*cell+7}" text-anchor="middle" font-size="20" fill="${values[i]===1?'var(--accent)':values[i]==='X'?'var(--dont-care)':'var(--muted)'}">${values[i]}</text></g>`})});
   const runs=indices=>{const result=[];for(const i of indices){const last=result.at(-1);if(last&&last[1]===i-1)last[1]=i;else result.push([i,i])}return result};
   cubes.forEach((cube,index)=>{const rs=rows.flatMap((r,k)=>cols.some(c=>matches(cube,(r<<cb)|c))?[k]:[]),cs=cols.flatMap((c,j)=>rows.some(r=>matches(cube,(r<<cb)|c))?[j]:[]);const rr=runs(rs),cr=runs(cs);const wrap=(rr.length>1&&rs[0]===0&&rs.at(-1)===rows.length-1)||(cr.length>1&&cs[0]===0&&cs.at(-1)===cols.length-1);const inset=4+(index%4)*3;for(const [r0,r1]of rr)for(const[c0,c1]of cr)body+=`<rect pointer-events="none" x="${left+c0*cell+inset}" y="${top+r0*cell+inset}" width="${(c1-c0+1)*cell-inset*2}" height="${(r1-r0+1)*cell-inset*2}" rx="${Math.min(17,cell/2-inset)}" fill="${colors[index%colors.length]}" fill-opacity=".055" stroke="${colors[index%colors.length]}" stroke-width="2" ${wrap?'stroke-dasharray="5 3"':''}><title>Group ${index+1}${wrap?' (continues across opposite edges)':''}</title></rect>`});
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="min-width:${Math.min(width,950)}px" role="img" aria-label="${n} variable Karnaugh map with ${cubes.length} implicant groups" font-family="monospace">${body}</svg>`;
