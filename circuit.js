@@ -37,6 +37,38 @@ export function circuitGraph(tree,variableCount){
 }
 let elk;
 const layouts=new WeakMap();
+export function wireCrossings(graph){
+  const segments=graph.edges.flatMap(edge=>(edge.sections||[]).flatMap(section=>{
+    const points=[section.startPoint,...(section.bendPoints||[]),section.endPoint];
+    return points.slice(1).map((b,i)=>({a:points[i],b,net:edge.net||edge.sources[0]}));
+  }));
+  const horizontal=segments.filter(s=>s.a.y===s.b.y),vertical=segments.filter(s=>s.a.x===s.b.x);
+  let count=0;
+  for(const h of horizontal)for(const v of vertical)if(h.net!==v.net&&v.a.x>Math.min(h.a.x,h.b.x)&&v.a.x<Math.max(h.a.x,h.b.x)&&h.a.y>Math.min(v.a.y,v.b.y)&&h.a.y<Math.max(v.a.y,v.b.y))count++;
+  return count;
+}
+async function layoutWithOrderedPins(graph){
+  // Commutative gates may permute inputs without changing their function.
+  // Let crossing minimization choose their order, then restore our exact pin
+  // spacing and centered outputs before the final orthogonal routing pass.
+  const flexible=structuredClone(graph);
+  const gates=flexible.children.filter(node=>['AND','OR','NAND','NOR','XOR'].includes(node.type));
+  if(!gates.some(node=>node.ports.length>2))return elk.layout(graph);
+  const baseline=await elk.layout(structuredClone(graph));
+  for(const node of gates){
+    node.layoutOptions['elk.portConstraints']='FIXED_SIDE';
+    for(const p of node.ports){delete p.x;delete p.y}
+  }
+  const ordering=await elk.layout(flexible);
+  for(const node of graph.children){
+    if(!gates.some(gate=>gate.id===node.id))continue;
+    const placed=ordering.children.find(gate=>gate.id===node.id);
+    const inputs=placed.ports.filter(p=>p.id.includes('-in-')).sort((a,b)=>a.y-b.y);
+    inputs.forEach((p,i)=>{node.ports.find(pin=>pin.id===p.id).y=(i+1)*node.bodyHeight/(inputs.length+1)});
+  }
+  const candidate=await elk.layout(graph);
+  return wireCrossings(candidate)<=wireCrossings(baseline)?candidate:baseline;
+}
 export function alignRailTaps(graph){
   const bus=graph.children.find(node=>node.type==='BUS');
   if(!bus||!bus.ports.length)return graph;
@@ -78,7 +110,7 @@ export async function layoutCircuit(tree,variableCount){
     if(typeof window==='undefined'){const {default:ELK}=await import('elkjs/lib/elk.bundled.js');elk=new ELK()}
     else elk=new window.ELK({workerUrl:new URL('./vendor/elk-worker.min.js',import.meta.url).href});
   }
-  const pending=elk.layout(circuitGraph(tree,variableCount)).then(alignRailTaps);
+  const pending=layoutWithOrderedPins(circuitGraph(tree,variableCount)).then(alignRailTaps);
   if(!layouts.has(tree))layouts.set(tree,new Map());layouts.get(tree).set(cacheKey,pending);
   try{return await pending}catch(error){layouts.get(tree).delete(cacheKey);throw error}
 }

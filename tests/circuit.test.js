@@ -1,8 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {circuitGraph,layoutCircuit,renderCircuit} from '../circuit.js';
+import {circuitGraph,layoutCircuit,renderCircuit,wireCrossings} from '../circuit.js';
+import ELK from 'elkjs/lib/elk.bundled.js';
 import {solve,evaluate} from '../logic.js';
 const near=(a,b)=>Math.abs(a-b)<.001;
+test('gate pin ordering reduces crossings in a dense canonical circuit',async()=>{
+ let state=2;
+ const values=Array.from({length:32},()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return +(state/2**32>.5)});
+ const tree=solve(5,values).forms.dnf;
+ const baseline=await new ELK().layout(circuitGraph(tree,5));
+ const optimized=await layoutCircuit(tree,5);
+ assert.ok(wireCrossings(optimized)<wireCrossings(baseline));
+ for(let row=0;row<32;row++)assert.equal(evalGraph(optimized,5,row),values[row]);
+});
 function evalGraph(graph,n,row){
  const results=new Map();
  for(const node of graph.children){
