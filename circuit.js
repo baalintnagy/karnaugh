@@ -37,6 +37,40 @@ export function circuitGraph(tree,variableCount){
 }
 let elk;
 const layouts=new WeakMap();
+export function alignRailTaps(graph){
+  const bus=graph.children.find(node=>node.type==='BUS');
+  if(!bus||!bus.ports.length)return graph;
+  const right=bus.x+bus.width,gateLeft=Math.min(...graph.children.filter(node=>node!==bus).map(node=>node.x));
+  const namesByPort=new Map(bus.ports.map(p=>[p.id,p.name]));
+  const pointsOf=edge=>[edge.sections[0].startPoint,...(edge.sections[0].bendPoints||[]),edge.sections[0].endPoint];
+  const busEdges=graph.edges.filter(edge=>namesByPort.has(edge.sources[0]));
+  const proposals=busEdges.map(edge=>{
+    const points=pointsOf(edge),name=namesByPort.get(edge.sources[0]);let index=0;
+    // Keep ELK's route past the input corridor, but remove the initial vertical
+    // detour by extending the corresponding rail to that route's height.
+    for(let i=1;i<points.length-1;i++)if(points[i].x>=right&&points[i].x<gateLeft-8&&points[i].y===points[i+1].y)index=i;
+    return {edge,name,points,index};
+  });
+  const occupied=graph.edges.flatMap(edge=>{const points=pointsOf(edge);return points.slice(1).flatMap((b,i)=>{const a=points[i];return a.y===b.y?[{y:a.y,left:Math.min(a.x,b.x),right:Math.max(a.x,b.x),net:edge.net||edge.sources[0]}]:[]})});
+  const taps=[];
+  for(const proposal of proposals){
+    const {edge,name,points}=proposal;let {index}=proposal;
+    if(index){const p=points[index];if(occupied.some(s=>s.net!==name&&Math.abs(s.y-p.y)<4&&s.right>right&&s.left<p.x))index=0}
+    const p=points[index],start={x:right,y:p.y};
+    const route=[start,...points.slice(index).filter((point,i)=>i!==0||point.x!==right)];
+    const id=`bus-${name}-level-${edge.id}`;edge.sources=[id];
+    edge.sections[0].startPoint=start;edge.sections[0].bendPoints=route.slice(1,-1);
+    taps.push({id,name,x:bus.width,y:p.y,width:0,height:0,layoutOptions:{'elk.port.side':'EAST'}});
+    occupied.push({y:p.y,left:right,right:points[index].x,net:name});
+  }
+  const top=Math.min(bus.y,...taps.map(p=>p.y-50)),bottom=Math.max(bus.y+bus.height,...taps.map(p=>p.y+20));
+  bus.y=top;bus.height=bus.bodyHeight=bottom-top;bus.ports=taps.map(p=>({...p,y:p.y-top}));
+  // Leave room above the highest tap for input labels.
+  const shift=Math.max(0,24-top);
+  if(shift){for(const node of graph.children)node.y+=shift;for(const edge of graph.edges)for(const section of edge.sections){section.startPoint.y+=shift;section.endPoint.y+=shift;for(const p of section.bendPoints||[])p.y+=shift}}
+  graph.height=Math.max(graph.height+shift,bottom+shift+24);
+  return graph;
+}
 export async function layoutCircuit(tree,variableCount){
   const cacheKey=variableCount||0;
   if(layouts.get(tree)?.has(cacheKey))return layouts.get(tree).get(cacheKey);
@@ -44,7 +78,7 @@ export async function layoutCircuit(tree,variableCount){
     if(typeof window==='undefined'){const {default:ELK}=await import('elkjs/lib/elk.bundled.js');elk=new ELK()}
     else elk=new window.ELK({workerUrl:new URL('./vendor/elk-worker.min.js',import.meta.url).href});
   }
-  const pending=elk.layout(circuitGraph(tree,variableCount));
+  const pending=elk.layout(circuitGraph(tree,variableCount)).then(alignRailTaps);
   if(!layouts.has(tree))layouts.set(tree,new Map());layouts.get(tree).set(cacheKey,pending);
   try{return await pending}catch(error){layouts.get(tree).delete(cacheKey);throw error}
 }

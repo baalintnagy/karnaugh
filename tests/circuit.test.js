@@ -48,3 +48,12 @@ test('ELK routes each wire between its exact pins without passing through gate b
   }
  }
 });
+test('rail taps align with first-layer gate inputs instead of keeping vertical branch detours',async()=>{
+ const graph=await layoutCircuit(solve(3,[0,1,1,1,0,0,1,1]).forms.nand,3);
+ const bus=graph.children.find(node=>node.type==='BUS'),firstX=Math.min(...graph.children.filter(node=>node!==bus).map(node=>node.x));
+ const targets=new Set(graph.children.filter(node=>near(node.x,firstX)).flatMap(node=>node.ports.map(p=>p.id)));
+ const direct=graph.edges.filter(edge=>edge.sources[0].startsWith('bus-')&&targets.has(edge.targets[0]));
+ assert.ok(direct.length>0);
+ for(const edge of direct){const section=edge.sections[0];assert.ok(near(section.startPoint.y,section.endPoint.y));for(const p of section.bendPoints||[])assert.ok(near(p.y,section.endPoint.y))}
+ for(const port of bus.ports){assert.ok(port.y>=40);assert.ok(port.y<=bus.height-16)}
+});
