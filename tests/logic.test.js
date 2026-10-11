@@ -1,0 +1,26 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {solve,evaluate,minimize,matches,orderNumber,popcount,gray} from '../logic.js';
+import {mapSvg,circuitSvg} from '../svg.js';
+function equivalent(n,values){const result=solve(n,values);for(const [name,tree] of Object.entries(result.forms))for(let i=0;i<values.length;i++)assert.equal(evaluate(tree,n,i),values[i],`${name}, n=${n}, row=${i}`);return result}
+test('every Boolean function with up to three inputs: all six forms are equivalent',()=>{for(let n=1;n<=3;n++)for(let order=0;order<2**(2**n);order++)equivalent(n,Array.from({length:2**n},(_,i)=>(order>>i)&1))});
+test('minimum cover agrees with an independent exhaustive cube-cover oracle for three inputs',()=>{
+ const n=3,cubes=[];for(let mask=0;mask<8;mask++)for(let bits=0;bits<8;bits++)if(!(bits&mask))cubes.push({bits,mask});
+ for(let order=0;order<256;order++){
+  const values=Array.from({length:8},(_,i)=>(order>>i)&1),valid=cubes.filter(c=>values.every((v,i)=>!matches(c,i)||v));
+  const dp=new Map([[0,[0,0]]]);
+  for(const c of valid){let covered=0;values.forEach((_,i)=>{if(matches(c,i))covered|=1<<i});for(const [state,cost]of [...dp]){const next=state|covered,nc=[cost[0]+1,cost[1]+n-popcount(c.mask)],old=dp.get(next);if(!old||nc[0]<old[0]||(nc[0]===old[0]&&nc[1]<old[1]))dp.set(next,nc)}}
+  const actual=minimize(n,values);assert.deepEqual([actual.length,actual.reduce((s,c)=>s+n-popcount(c.mask),0)],dp.get(order));
+ }
+});
+test('structured eight-variable functions and deterministic random tables',()=>{
+ for(let n=4;n<=8;n++){
+  equivalent(n,Array.from({length:2**n},(_,i)=>popcount(i)%2));
+  equivalent(n,Array.from({length:2**n},(_,i)=>+!!(i&(1<<(n-1)))));
+  equivalent(n,Array.from({length:2**n},(_,i)=>+(popcount(i)>n/2)));
+  let seed=123456+n;equivalent(n,Array.from({length:2**n},()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed>>>31}));
+ }
+});
+test('order numbers keep all 256 bits',()=>{assert.equal(orderNumber([0,1,0,1]),'10');assert.equal(orderNumber(Array(256).fill(1)),((1n<<256n)-1n).toString());assert.equal(orderNumber([...Array(255).fill(0),1]),(1n<<255n).toString())});
+test('Gray maps include every row once and adjacent labels differ by one bit',()=>{for(let n=1;n<=8;n++){const codes=gray(n);assert.equal(new Set(codes).size,2**n);for(let i=0;i<codes.length;i++)assert.equal(popcount(codes[i]^codes[(i+1)%codes.length]),1);const svg=mapSvg(n,Array(2**n).fill(1),[{bits:0,mask:2**n-1}]);assert.equal((svg.match(/class="map-cell"/g)||[]).length,2**n)}});
+test('gate diagram is a standalone SVG with actual NAND symbols',()=>{const tree=solve(2,[0,0,0,1]).forms.nand;const svg=circuitSvg(tree,{text:'#fff',muted:'#999',line:'#555',accent:'#afa',bg:'#111'});assert.ok(svg.startsWith('<svg xmlns='));assert.ok(svg.includes('NAND'));assert.ok(svg.includes('<circle'))});

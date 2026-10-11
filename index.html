@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Explore Boolean functions with truth tables, Karnaugh maps, minimal expressions, and SVG logic circuits.">
+  <title>Karnaugh Studio · Boolean logic workbench</title>
+  <link rel="stylesheet" href="styles.css">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem('theme')||'dark'}catch{};window.MathJax={loader:{load:['input/asciimath','output/chtml']},asciimath:{delimiters:[['`','`']]},startup:{typeset:false}};</script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/startup.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="topbar"><a href="./" class="brand"><span class="brand-mark">K</span> Karnaugh<span class="brand-secondary">Studio</span></a><div class="header-actions"><span class="local-badge"><i></i> Runs in your browser</span><button id="theme" class="icon-button" aria-label="Switch to light theme">☼</button></div></header>
+<main>
+  <div class="intro"><div><div class="eyebrow">THE BOOLEAN LOGIC WORKBENCH</div><h1>Make sense of every bit<span>.</span></h1><p>From truth table to simplest expression. Explore the logic behind your function.</p></div><div class="version-tag">01 — 08 VARIABLES</div></div>
+  <section class="workspace">
+    <aside class="panel input-panel"><div class="panel-heading"><h2><span class="step">01</span> Define your function</h2></div>
+      <label class="field-label" for="variables">Boolean variables <span>1–8</span></label><div class="variable-control"><button id="minus" aria-label="Remove a variable">−</button><input id="variables" type="number" min="1" max="8" value="3" aria-describedby="variables-help"><button id="plus" aria-label="Add a variable">+</button></div><p id="variables-help" class="small muted">A is the most significant input bit.</p>
+      <div class="table-toolbar"><h3>Truth table <span id="row-count"></span></h3><div><button id="clear" class="text-button">Clear</button><button id="invert" class="text-button">Invert</button></div></div>
+      <div class="truth-scroll"><table id="truth-table"><caption class="sr-only">Click an output to toggle between zero and one</caption><thead></thead><tbody></tbody></table></div>
+      <div class="input-footer"><label for="preset" class="sr-only">Example function</label><select id="preset"><option value="">Load an example…</option value="majority">Majority vote</option><option value="parity">Odd parity / XOR</option><option value="first">First input / A</option></select><button id="random" class="secondary-button">Randomize</button></div>
+    </aside>
+    <div class="results">
+      <section class="panel function-panel"><div><div class="eyebrow">FUNCTION ORDER NUMBER</div><div id="order" class="order-number"></div><div class="small muted">N = Σ f(i) · 2ⁱ <span class="separator">/</span> row 0 is the least significant bit</div></div><div class="function-stats"><span><strong id="ones">0</strong> minterms</span><span><strong id="groups">0</strong> groups</span></div></section>
+      <section class="panel map-panel"><div class="panel-heading"><h2><span class="step">02</span> Karnaugh map</h2><div class="pill">GRAY CODE ORDER</div></div><p class="small muted map-note">Click any cell to toggle its output. Colored loops show the selected implicants; loops can wrap at the edges.</p><div id="map" class="map-container"></div><div id="legend" class="map-legend"></div></section>
+      <section class="panel expression-panel"><div class="panel-heading"><h2><span class="step">03</span> Expressions & circuits</h2><span id="status" class="small muted" role="status" aria-live="polite">Solving…</span></div>
+      <div class="tabs" role="tablist" aria-label="Expression form"><button role="tab" id="tab-minimal" data-form="minimal" aria-selected="true">Minimal</button><button role="tab" id="tab-dnf" data-form="dnf" aria-selected="false">DNF</button><button role="tab" id="tab-cnf" data-form="cnf" aria-selected="false">CNF</button><button role="tab" id="tab-nand" data-form="nand" aria-selected="false">NAND</button><button role="tab" id="tab-nor" data-form="nor" aria-selected="false">NOR</button><button role="tab" id="tab-xor" data-form="xor" aria-selected="false">XOR</button></div>
+      <div id="expression-content" role="tabpanel" aria-labelledby="tab-minimal"><div class="formula-heading"><span id="form-name" class="field-label"></span><button id="copy" class="text-button">Copy ASCIIMath</button></div><div id="formula" class="formula"></div><p id="form-note" class="small muted"></p><details class="source-details"><summary>ASCIIMath source</summary><code id="source"></code></details><div class="circuit-heading"><h3>Logic circuit</h3><button id="download" class="text-button">↓ Download SVG</button></div><div id="diagram" class="diagram-container"></div></div></section>
+    </div>
+  </section>
+  <footer><span><span class="footer-mark">K</span> Small tables. Clear thinking.</span><details><summary>Notation & conventions</summary><p>Inputs run from A to H, with A as the most significant bit. Rows ascend from 0 to 2ⁿ−1. The function order is Σ f(i)2ⁱ. DNF and CNF are canonical forms. Minimal is a minimum sum of products, ranked by term count then literal count. NAND and NOR use minimized SOP and POS respectively. XOR is the algebraic normal form (AND and XOR). Gates may have multiple inputs. No don't-care values are used.</p></details><span>Made for curious minds.</span></footer>
+</main>
+</body></html>
