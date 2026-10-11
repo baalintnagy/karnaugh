@@ -1,6 +1,28 @@
-import {gray,matches} from './logic.js';
+import {gray,matches,names} from './logic.js';
 export const colors=['#9dca6b','#8ab9ee','#e8a57d','#c09ce8','#6ac7bb','#df92b4','#d6c76b','#acb7bf'];
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+export function timingSignals(n,values){
+  return [...names(n).map((name,j)=>({name,values:values.map((_,i)=>(i>>(n-1-j))&1)})),{name:'f',values:[...values]}];
+}
+export function timingSvg(n,values,palette){
+  const {text,muted,line,accent,bg}=palette,signals=timingSignals(n,values);
+  const left=66,top=52,slot=40,row=60,width=left+slot*values.length+24,height=top+signals.length*row+26;
+  let body=`<rect width="100%" height="100%" fill="${bg}"/><text x="12" y="25" fill="${muted}" font-size="10">Row i</text>`;
+  for(let i=0;i<=values.length;i++){
+    const x=left+i*slot;
+    body+=`<path d="M${x},35 V${height-30}" stroke="${line}" stroke-dasharray="3 5" stroke-width="1"/>`;
+    if(i<values.length)body+=`<text x="${x+slot/2}" y="25" text-anchor="middle" fill="${muted}" font-size="10">${i}</text>`;
+  }
+  signals.forEach((signal,j)=>{
+    const high=top+j*row,low=high+28,color=signal.name==='f'?accent:text;
+    body+=`<text x="20" y="${high+19}" fill="${color}" font-size="14" font-weight="600">${signal.name}</text><text x="48" y="${high+4}" fill="${muted}" font-size="8">1</text><text x="48" y="${low+4}" fill="${muted}" font-size="8">0</text>`;
+    let path=`M${left},${signal.values[0]?high:low}`;
+    signal.values.forEach((v,i)=>{const y=v?high:low;if(i&&v!==signal.values[i-1])path+=` V${y}`;path+=` H${left+(i+1)*slot}`});
+    body+=`<g data-signal="${signal.name}"><title>${signal.name}: ${signal.values.join(' ')}</title><path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/></g>`;
+  });
+  body+=`<text x="${left}" y="${height-8}" fill="${muted}" font-size="10">Time → (equal intervals, ascending truth-table rows)</text>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Timing diagram of ${names(n).join(', ')} and output f across all ${values.length} truth-table rows" font-family="system-ui,sans-serif"><desc>Ideal signals with no propagation delay. Each interval corresponds to one truth-table row in binary input order. High is 1 and low is 0.</desc>${body}</svg>`;
+}
 export function mapSvg(n,values,cubes=[]){
   const rb=Math.floor(n/2),cb=n-rb,rows=gray(rb),cols=gray(cb),cell=52,left=66,top=48,width=left+cols.length*cell+20,height=top+rows.length*cell+20;
   const label=(i,b)=>b?i.toString(2).padStart(b,'0'):'–';
@@ -11,25 +33,4 @@ export function mapSvg(n,values,cubes=[]){
   cubes.forEach((cube,index)=>{const rs=rows.flatMap((r,k)=>cols.some(c=>matches(cube,(r<<cb)|c))?[k]:[]),cs=cols.flatMap((c,j)=>rows.some(r=>matches(cube,(r<<cb)|c))?[j]:[]);const rr=runs(rs),cr=runs(cs);const wrap=(rr.length>1&&rs[0]===0&&rs.at(-1)===rows.length-1)||(cr.length>1&&cs[0]===0&&cs.at(-1)===cols.length-1);const inset=4+(index%4)*3;for(const [r0,r1]of rr)for(const[c0,c1]of cr)body+=`<rect pointer-events="none" x="${left+c0*cell+inset}" y="${top+r0*cell+inset}" width="${(c1-c0+1)*cell-inset*2}" height="${(r1-r0+1)*cell-inset*2}" rx="${Math.min(17,cell/2-inset)}" fill="${colors[index%colors.length]}" fill-opacity=".055" stroke="${colors[index%colors.length]}" stroke-width="2" ${wrap?'stroke-dasharray="5 3"':''}><title>Group ${index+1}${wrap?' (continues across opposite edges)':''}</title></rect>`});
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="min-width:${Math.min(width,950)}px" role="img" aria-label="${n} variable Karnaugh map with ${cubes.length} implicant groups" font-family="monospace">${body}</svg>`;
 }
-export function circuitSvg(tree,palette){
-  // Intern identical subexpressions to share inputs and inverter outputs.
-  const nodes=[],intern=new Map();
-  function add(t){const children=(t.children||[]).map(add),key=t.type+':'+(t.name??t.value??'')+':'+children.map(c=>c.id).join(',');if(intern.has(key))return intern.get(key);const node={...t,children,id:nodes.length,depth:children.length?1+Math.max(...children.map(c=>c.depth)):0};nodes.push(node);intern.set(key,node);return node}
-  const output=add(tree),layers=[];nodes.forEach(node=>(layers[node.depth]??=[]).push(node));
-  const row=74,margin=40,spacing=170,height=Math.max(180,Math.max(...layers.map(l=>l.length))*row+margin*2),width=(layers.length-1)*spacing+230;
-  layers.forEach((layer,d)=>layer.forEach((node,j)=>{node.x=60+d*spacing;node.y=(height-(layer.length-1)*row)/2+j*row}));
-  const {text,muted,line,accent,bg}=palette;
-  let wires='',symbols='';
-  for(const node of nodes){node.children.forEach((c,j)=>{const y=node.y+(j-(node.children.length-1)/2)*Math.min(9,32/Math.max(1,node.children.length-1)),sx=c.x+(c.children.length?65:24),ex=node.x;const bend=sx+(ex-sx)*.5;wires+=`<path d="M${sx},${c.y} H${bend} V${y} H${ex}" fill="none" stroke="${line}" stroke-width="1.4"/>`});
-    const x=node.x,y=node.y;
-    if(!node.children.length){symbols+=`<rect x="${x-20}" y="${y-15}" width="44" height="30" rx="6" fill="${bg}" stroke="${line}"/><text x="${x+2}" y="${y+5}" text-anchor="middle" fill="${accent}" font-size="14">${esc(node.name??node.value)}</text>`;continue}
-    let shape='';
-    if(['AND','NAND'].includes(node.type))shape=`<path d="M${x},${y-23} H${x+25} A23,23 0 0 1 ${x+25},${y+23} H${x} Z"/>`;
-    else if(node.type==='NOT')shape=`<path d="M${x},${y-23} L${x+46},${y} L${x},${y+23} Z"/>`;
-    else shape=`<path d="M${x},${y-23} Q${x+35},${y-25} ${x+52},${y} Q${x+35},${y+25} ${x},${y+23} Q${x+17},${y} ${x},${y-23} Z"/>${node.type==='XOR'?`<path d="M${x-5},${y-23} Q${x+12},${y} ${x-5},${y+23}" fill="none"/>`:''}`;
-    const bubble=['NOT','NAND','NOR'].includes(node.type);
-    symbols+=`<g fill="${bg}" stroke="${text}" stroke-width="1.6">${shape}${bubble?`<circle cx="${x+56}" cy="${y}" r="4"/>`:''}<path d="M${x+(bubble?60:52)},${y} H${x+65}"/></g><text x="${x+24}" y="${y+39}" text-anchor="middle" fill="${muted}" font-size="9">${node.type}</text>`;
-  }
-  const end=output.x+(output.children.length?65:24);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Logic circuit for the selected expression" font-family="system-ui,sans-serif"><rect width="100%" height="100%" fill="${bg}"/>${wires}${symbols}<path d="M${end},${output.y} H${width-42}" stroke="${accent}" stroke-width="2"/><text x="${width-32}" y="${output.y+5}" fill="${accent}" font-size="15">f</text></svg>`;
-}
+export {circuitSvg} from './circuit.js';

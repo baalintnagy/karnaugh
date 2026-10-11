@@ -99,7 +99,7 @@ export function expression(tree){
   if(tree.type==='CONST')return String(tree.value);
   if(tree.type==='NOT')return `bar(${expression(tree.children[0])})`;
   const kids=tree.children.map(expression);
-  const op={AND:' * ',OR:' + ',XOR:' oplus ',NAND:' * ',NOR:' + '}[tree.type];
+  const op={AND:' ',OR:' + ',XOR:' oplus ',NAND:' ',NOR:' + '}[tree.type];
   const body=kids.map((s,i)=>['INPUT','CONST','NOT'].includes(tree.children[i].type)?s:`(${s})`).join(op);
   return ['NAND','NOR'].includes(tree.type)?`bar(${body})`:body;
 }
