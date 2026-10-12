@@ -4,6 +4,20 @@ import {circuitGraph,layoutCircuit,renderCircuit,wireCrossings,untangleGateAppro
 import ELK from 'elkjs/lib/elk.bundled.js';
 import {solve,evaluate} from '../logic.js';
 const near=(a,b)=>Math.abs(a-b)<.001;
+test('literal inverters, term gates and the combiner occupy distinct columns',async()=>{
+ const input=name=>({type:'INPUT',name});
+ for(const universal of [false,true]){
+  const A=input('A'),B=input('B'),C=input('C'),inverse=universal?{type:'NAND',children:[A,A]}:{type:'NOT',children:[A]};
+  const termType=universal?'NAND':'AND',tree={type:universal?'NAND':'OR',children:[{type:termType,children:[A,B]},{type:termType,children:[inverse,C]}]};
+  const graph=await layoutCircuit(tree,3),inverter=graph.children.find(n=>n.type==='NOT'||n.tiedInputs);
+  const terms=graph.children.filter(n=>n.type===termType&&!n.tiedInputs&&graph.edges.some(e=>e.sources[0]===n.id+'-out'&&e.targets[0]!=='output-in'));
+  assert.equal(terms.length,2);assert.equal(terms[0].x,terms[1].x);
+  assert.ok(inverter.x<terms[0].x);
+  const combiner=graph.children.find(n=>graph.edges.some(e=>e.sources[0]===n.id+'-out'&&e.targets[0]==='output-in'));
+  assert.ok(terms[0].x<combiner.x);
+  for(let row=0;row<8;row++)assert.equal(evalGraph(graph,3,row),evaluate(tree,3,row));
+ }
+});
 test('stacked gate outputs feed a common gate without staircase crossings',async()=>{
  const tree={type:'NAND',children:['A','B','C','D','E','F'].map(name=>{const input={type:'INPUT',name};return {type:'NAND',children:[input,input]}})};
  const graph=await layoutCircuit(tree,6),root=graph.children.find(n=>n.type==='NAND'&&!n.tiedInputs);

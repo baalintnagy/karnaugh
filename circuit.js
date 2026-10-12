@@ -154,10 +154,14 @@ export function alignRailTaps(graph){
 }
 export function routeInChannels(graph){
   const gap=28,bus=graph.children.find(n=>n.type==='BUS'),owners=new Map(graph.children.flatMap(n=>n.ports.map(p=>[p.id,n]))),depths=new Map();
+  const isInputInverter=node=>(node.type==='NOT'||node.tiedInputs)&&graph.edges.filter(e=>owners.get(e.targets[0])===node).every(e=>owners.get(e.sources[0])===bus);
   const depth=node=>{
     if(depths.has(node.id))return depths.get(node.id);
     const incoming=graph.edges.filter(e=>owners.get(e.targets[0])===node);
-    const value=node===bus?0:Math.max(0,...incoming.map(e=>depth(owners.get(e.sources[0]))))+1;
+    const predecessors=incoming.map(e=>owners.get(e.sources[0]));
+    const outputDriver=graph.edges.some(e=>owners.get(e.sources[0])===node&&owners.get(e.targets[0])?.type==='OUTPUT');
+    const stage=node===bus?0:node.type==='CONST'||isInputInverter(node)?1:outputDriver&&predecessors.some(p=>p!==bus&&!isInputInverter(p)&&p.type!=='CONST')?3:2;
+    const value=node===bus?0:Math.max(stage,Math.max(0,...predecessors.map(depth))+1);
     depths.set(node.id,value);return value;
   };
   graph.children.forEach(depth);
@@ -165,7 +169,9 @@ export function routeInChannels(graph){
   if(bus){bus.x=24;bus.y=24}
   let left=bus?bus.x+bus.width+56:24,top=64;
   for(let level=1;level<=levels;level++){
-    const layer=nodes.filter(n=>depth(n)===level).sort((a,b)=>a.y-b.y||a.id.localeCompare(b.id)),width=Math.max(...layer.map(n=>n.width));
+    const layer=nodes.filter(n=>depth(n)===level).sort((a,b)=>a.y-b.y||a.id.localeCompare(b.id));
+    if(!layer.length)continue;
+    const width=Math.max(...layer.map(n=>n.width));
     for(const node of layer){node.x=left;node.y=top;top+=node.height+gap*2}
     // Higher source gates take the farther lanes. Their wires turn down
     // beyond the lower gates' shorter output runs, rather than crossing them.
