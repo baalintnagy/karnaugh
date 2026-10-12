@@ -86,7 +86,18 @@ async function renderForm(){
   $('copy').disabled=!result;$('download').disabled=true;
   try{window.MathJax?.typesetClear?.([$('formula')])}catch{}
   if(!result){$('formula').textContent='Computing exact cover…';formulaSource='';$('diagram').replaceChildren();return}
-  formulaSource='f = '+expression(result.forms[form]);$('formula').textContent=mathSource(formulaSource);
+  const formulaTree=result.forms[form];
+  formulaSource='f = '+expression(formulaTree);
+  // A bar over the entire universal-gate formula is an unbreakable box.
+  // Use equivalent prefix negation for that outer operation in the display.
+  if(['AND','OR','NAND','NOR'].includes(formulaTree.type)){
+    const negated=['NAND','NOR'].includes(formulaTree.type),sum=['OR','NOR'].includes(formulaTree.type);
+    const chunks=[negated?'f = not':'f =',...(negated?['(']:[]),...formulaTree.children.map((child,i)=>{
+      const source=expression(child),term=['INPUT','CONST','NOT'].includes(child.type)?source:'('+source+')';
+      return (i&&sum?'+ ':'')+term;
+    }),...(negated?[')']:[])];
+    $('formula').replaceChildren(...chunks.map((source,i)=>{const chunk=document.createElement('span');chunk.className='formula-chunk'+(negated&&(i===1||i===chunks.length-1)?' formula-outer-parenthesis':'');chunk.textContent=mathSource(source);return chunk}));
+  }else $('formula').textContent=mathSource(formulaSource);
   typeset();$('diagram').textContent='Routing circuit wires…';
   try{const rendered=await circuitSvg(result.forms[form],palette(),n);if(drawing!==diagramRevision)return;svg=rendered;$('diagram').innerHTML=svg;applyZoom('diagram');$('download').disabled=false}catch(error){if(drawing!==diagramRevision)return;$('diagram').textContent='Circuit layout failed. Reload to retry.';console.error(error)}
 }

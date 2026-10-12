@@ -21,8 +21,8 @@
   <meta name="twitter:image" content="https://baalintnagy.github.io/karnaugh/assets/social-preview.png">
   <meta name="twitter:image:alt" content="Karnaugh Studio with a six-variable Karnaugh map and colored implicant groups.">
   <link rel="stylesheet" href="styles.css">
-  <script>const systemTheme=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';let savedTheme;try{savedTheme=localStorage.getItem('theme')}catch{};document.documentElement.dataset.theme=['light','dark'].includes(savedTheme)?savedTheme:systemTheme;window.MathJax={loader:{load:['input/asciimath','output/chtml']},asciimath:{delimiters:[['`','`']]},startup:{typeset:false}};</script>
-  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/startup.js"></script>
+  <script>const systemTheme=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';let savedTheme;try{savedTheme=localStorage.getItem('theme')}catch{};document.documentElement.dataset.theme=['light','dark'].includes(savedTheme)?savedTheme:systemTheme;window.MathJax={loader:{load:['input/asciimath','output/chtml']},asciimath:{delimiters:[['`','`']]},output:{displayOverflow:'linebreak',linebreaks:{inline:true,width:'100%',lineleading:.35}},startup:{typeset:false}};</script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@4.0.0/startup.js"></script>
   <script defer src="vendor/elk.bundled.js"></script>
   <script type="module" src="app.js"></script>
 </head>
