@@ -1,5 +1,10 @@
 import {gray,matches,names} from './logic.js';
 export const colors=['#9dca6b','#8ab9ee','#e8a57d','#c09ce8','#6ac7bb','#df92b4','#d6c76b','#acb7bf'];
+const outlineStyles=[['solid',''],['dashed','7 4'],['dotted','0 5'],['dash-dot','9 4 0 4'],['dash-dot-dot','9 4 0 4 0 4'],['short-dash','3 4']];
+export function groupOutline(index){
+  const [name,dash]=outlineStyles[index%outlineStyles.length];
+  return {name,attributes:`stroke-linecap="round"${dash?` stroke-dasharray="${dash}"`:''}`};
+}
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 export function timingSignals(n,values){
   return [...names(n).map((name,j)=>({name,values:values.map((_,i)=>(i>>(n-1-j))&1)})),{name:'f',values:[...values]}];
@@ -41,7 +46,7 @@ export function mapSvg(n,values,cubes=[]){
   const runs=indices=>{const result=[];for(const i of indices){const last=result.at(-1);if(last&&last[1]===i-1)last[1]=i;else result.push([i,i])}return result};
   cubes.forEach((cube,index)=>{
     const rs=rows.flatMap((r,k)=>cols.some(c=>matches(cube,(r<<cb)|c))?[k]:[]),cs=cols.flatMap((c,j)=>rows.some(r=>matches(cube,(r<<cb)|c))?[j]:[]);
-    const rr=runs(rs),cr=runs(cs),split=rr.length>1||cr.length>1,inset=4+(index%4)*3,color=colors[index%colors.length];
+    const rr=runs(rs),cr=runs(cs),split=rr.length>1||cr.length>1,inset=4+(index%4)*3,color=colors[index%colors.length],outline=groupOutline(index);
     for(const [r0,r1]of rr)for(const[c0,c1]of cr){
       // Open the outline toward the other fragments of this implicant. At
       // opposite map edges this produces matching half-loops; internal gaps
@@ -52,7 +57,7 @@ export function mapSvg(n,values,cubes=[]){
       const north=rr.length>1&&(wrapY?r0===0:r0>rs[0]);
       const south=rr.length>1&&(wrapY?r1===rows.length-1:r1<rs.at(-1));
       const x=left+c0*cell+(west?0:inset),y=top+r0*cell+(north?0:inset),right=left+(c1+1)*cell-(east?0:inset),bottom=top+(r1+1)*cell-(south?0:inset);
-      const radius=split?Math.min(right-x,bottom-y)/2:Math.min(17,cell/2-inset);
+      const radius=Math.min(17,cell/2-inset,(right-x)/2,(bottom-y)/2);
       let d='';
       if(!north)d+=`M${x+(west?0:radius)},${y} H${right-(east?0:radius)} `;
       if(!east)d+=`M${right},${y+(north?0:radius)} V${bottom-(south?0:radius)} `;
@@ -62,7 +67,7 @@ export function mapSvg(n,values,cubes=[]){
       if(!north&&!east)d+=`M${right-radius},${y} A${radius},${radius} 0 0 1 ${right},${y+radius} `;
       if(!south&&!east)d+=`M${right},${bottom-radius} A${radius},${radius} 0 0 1 ${right-radius},${bottom} `;
       if(!south&&!west)d+=`M${x+radius},${bottom} A${radius},${radius} 0 0 1 ${x},${bottom-radius} `;
-      body+=`<g pointer-events="none" data-map-group="${index+1}" data-continuation="${[north?'north':'',east?'east':'',south?'south':'',west?'west':''].filter(Boolean).join(' ')}"><title>Group ${index+1}${split?' (matching open ends belong to the same term)':''}</title><rect x="${x}" y="${y}" width="${right-x}" height="${bottom-y}" rx="${split?0:radius}" fill="${color}" fill-opacity=".055"/><path d="${d}" fill="none" stroke="${color}" stroke-width="2"/></g>`;
+      body+=`<g pointer-events="none" data-map-group="${index+1}" data-continuation="${[north?'north':'',east?'east':'',south?'south':'',west?'west':''].filter(Boolean).join(' ')}"><title>Group ${index+1}${split?' (matching open ends belong to the same term)':''}</title><rect x="${x}" y="${y}" width="${right-x}" height="${bottom-y}" rx="${split?0:radius}" fill="${color}" fill-opacity=".055"/><path d="${d}" fill="none" stroke="${color}" stroke-width="2" ${outline.attributes}/></g>`;
     }
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="min-width:${Math.min(width,950)}px" role="img" aria-label="${n} variable Karnaugh map with ${cubes.length} implicant groups" font-family="monospace">${body}</svg>`;

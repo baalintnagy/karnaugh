@@ -1,5 +1,5 @@
 import {names,orderNumber,expression,sop} from './logic.js';
-import {mapSvg,circuitSvg,timingSvg,colors} from './svg.js';
+import {mapSvg,circuitSvg,timingSvg,colors,groupOutline} from './svg.js';
 const $=id=>document.getElementById(id);
 let n=3,values=[0,1,1,1,0,0,1,1],result=null,form='minimal',worker=null,revision=0,svg='';
 let diagramRevision=0;
@@ -34,7 +34,9 @@ function map(){
   $('legend').replaceChildren();
   if(result)result.ones.forEach((c,i)=>{
     const item=document.createElement('span');item.className='legend-item';
-    const dot=document.createElement('i');dot.style.background=colors[i%colors.length];
+    const dot=document.createElement('span'),outline=groupOutline(i);
+    dot.title=outline.name+' outline';
+    dot.innerHTML=`<svg width="32" height="12" viewBox="0 0 32 12" aria-hidden="true"><path d="M2,6 H30" fill="none" stroke="${colors[i%colors.length]}" stroke-width="2" ${outline.attributes}/></svg>`;
     const term=document.createElement('span');term.textContent=mathSource(expression(sop(n,[c])));
     item.append(dot,term);$('legend').append(item);
   });
