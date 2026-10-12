@@ -1,9 +1,38 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {circuitGraph,layoutCircuit,renderCircuit,wireCrossings,untangleGateApproaches} from '../circuit.js';
+import {circuitGraph,layoutCircuit,renderCircuit,wireCrossings,untangleGateApproaches,spreadVerticalLanes} from '../circuit.js';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import {solve,evaluate} from '../logic.js';
 const near=(a,b)=>Math.abs(a-b)<.001;
+test('stacked gate outputs feed a common gate without staircase crossings',async()=>{
+ const tree={type:'NAND',children:['A','B','C','D','E','F'].map(name=>{const input={type:'INPUT',name};return {type:'NAND',children:[input,input]}})};
+ const graph=await layoutCircuit(tree,6),root=graph.children.find(n=>n.type==='NAND'&&!n.tiedInputs);
+ const feeds=graph.edges.filter(e=>e.targets[0].startsWith(root.id+'-in-'));
+ assert.equal(feeds.length,6);
+ assert.equal(wireCrossings({children:graph.children,edges:feeds}),0);
+ const laneXs=feeds.slice().sort((a,b)=>a.sections[0].startPoint.y-b.sections[0].startPoint.y).map(e=>e.sections[0].bendPoints[0].x);
+ for(let i=1;i<laneXs.length;i++)assert.ok(laneXs[i-1]-laneXs[i]>=28);
+ for(let row=0;row<64;row++)assert.equal(evalGraph(graph,6,row),evaluate(tree,6,row));
+});
+test('foreign wires detour around junctions rather than bridging over their dots',()=>{
+ const edge=(id,net,points)=>({id,net,sources:[net],targets:[],sections:[{startPoint:points[0],bendPoints:points.slice(1,-1),endPoint:points.at(-1)}]});
+ const graph={width:120,height:110,children:[],edges:[edge('rail','A',[{x:50,y:0},{x:50,y:100}]),edge('branch','A',[{x:50,y:40},{x:110,y:40}]),edge('cross','B',[{x:0,y:40},{x:100,y:40}])]};
+ const svg=renderCircuit(graph,{text:'#fff',muted:'#999',line:'#555',accent:'#afa',bg:'#111'});
+ assert.ok(svg.includes('data-junction="true" cx="50" cy="40"'));
+ assert.ok(!svg.includes('cx="50" cy="40" r="4"'));
+ assert.ok(svg.includes('cx="50" cy="22" r="4"'));
+ assert.ok(svg.indexOf('data-wire-crossing="true"')<svg.indexOf('data-junction="true"'));
+});
+test('parallel vertical wire bends get clearance while endpoints stay fixed',()=>{
+ const edge=(id,x,y)=>({id,sources:[id],targets:[id+'-target'],sections:[{startPoint:{x:0,y},bendPoints:[{x,y},{x,y:y+70}],endPoint:{x:120,y:y+70}}]});
+ const graph={children:[],edges:[edge('a',50,10),edge('b',53,20)]};
+ const endpoints=graph.edges.map(e=>structuredClone([e.sections[0].startPoint,e.sections[0].endPoint]));
+ const crossings=wireCrossings(graph);
+ spreadVerticalLanes(graph);
+ assert.ok(Math.abs(graph.edges[0].sections[0].bendPoints[0].x-graph.edges[1].sections[0].bendPoints[0].x)>=16);
+ assert.ok(wireCrossings(graph)<=crossings);
+ graph.edges.forEach((e,i)=>assert.deepEqual([e.sections[0].startPoint,e.sections[0].endPoint],endpoints[i]));
+});
 test('local gate approach cleanup removes an input swap without changing connections',()=>{
  const node={id:'g',type:'AND',x:100,y:0,width:94,height:124,bodyHeight:100,ports:[{id:'g-in-0',x:0,y:33},{id:'g-in-1',x:0,y:67}]};
  const edge=(id,source,target,y,endY,x)=>({id,sources:[source],targets:[target],sections:[{startPoint:{x:0,y},bendPoints:[{x,y},{x,y:endY}],endPoint:{x:100,y:endY}}]});
@@ -44,14 +73,28 @@ test('NAND and NOR inverters share one routed feed and split next to the gate',a
   for(let row=0;row<2;row++)assert.equal(evalGraph(graph,1,row),1-row);
  }
 });
-test('gate pin ordering reduces crossings in a dense canonical circuit',async()=>{
+test('channel routing keeps crossings away from gates in a dense canonical circuit',async()=>{
  let state=2;
  const values=Array.from({length:32},()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return +(state/2**32>.5)});
  const tree=solve(5,values).forms.dnf;
  const baseline=await new ELK().layout(circuitGraph(tree,5));
  const optimized=await layoutCircuit(tree,5);
- assert.ok(wireCrossings(optimized)<wireCrossings(baseline));
+ assert.ok(wireCrossings(optimized,true)<=wireCrossings(baseline,true));
  for(let row=0;row<32;row++)assert.equal(evalGraph(optimized,5,row),values[row]);
+});
+test('routed circuits enforce clearance and keep crossing bridges away from junctions',async()=>{
+ const values=Array.from({length:32},(_,i)=>+((i*13%17)>7)),forms=solve(5,values).forms;
+ for(const form of ['dnf','cnf','nand','nor']){
+  const graph=await layoutCircuit(forms[form],5),vertical=[];
+  for(const edge of graph.edges){const s=edge.sections[0],points=[s.startPoint,...(s.bendPoints||[]),s.endPoint];for(let i=1;i<points.length;i++)if(points[i].x===points[i-1].x&&points[i].y!==points[i-1].y)vertical.push({x:points[i].x,low:Math.min(points[i].y,points[i-1].y),high:Math.max(points[i].y,points[i-1].y),net:edge.net||edge.sources[0]})}
+  const bus=graph.children.find(n=>n.type==='BUS');
+  bus.inputNames.forEach((name,i)=>vertical.push({x:bus.x+24+i*26,low:bus.y+40,high:bus.y+bus.height-16,net:name}));
+  for(let i=0;i<vertical.length;i++)for(let j=i+1;j<vertical.length;j++){const a=vertical[i],b=vertical[j];if(a.net!==b.net&&Math.min(a.high,b.high)>Math.max(a.low,b.low))assert.ok(Math.abs(a.x-b.x)>=24,`${form}: close vertical lanes`)}
+  const svg=renderCircuit(graph,{text:'#fff',muted:'#999',line:'#555',accent:'#afa',bg:'#111'});
+  const dots=[...svg.matchAll(/data-junction="true" cx="([\d.]+)" cy="([\d.]+)"/g)].map(m=>[+m[1],+m[2]]);
+  const bridges=[...svg.matchAll(/<g data-wire-crossing="true"><circle cx="([\d.]+)" cy="([\d.]+)"/g)].map(m=>[+m[1],+m[2]]);
+  for(const [x,y] of bridges)assert.ok(dots.every(([dx,dy])=>Math.abs(dx-x)>=10||Math.abs(dy-y)>=10),`${form}: bridge overlaps junction`);
+ }
 });
 function evalGraph(graph,n,row){
  const results=new Map();

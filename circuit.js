@@ -50,6 +50,41 @@ export function wireCrossings(graph,nearGate=false){
   }
   return count;
 }
+export function spreadVerticalLanes(graph,clearance=16){
+  const collect=()=>graph.edges.flatMap(edge=>(edge.sections||[]).flatMap(section=>{
+    const points=[section.startPoint,...(section.bendPoints||[]),section.endPoint];
+    return points.slice(1).flatMap((b,i)=>points[i].x===b.x&&points[i].y!==b.y?[{edge,points,i,a:points[i],b,net:edge.net||edge.sources[0]}]:[]);
+  }));
+  const overlaps=(a,b)=>Math.min(Math.max(a.a.y,a.b.y),Math.max(b.a.y,b.b.y))>Math.max(Math.min(a.a.y,a.b.y),Math.min(b.a.y,b.b.y));
+  let moves=0;
+  for(let pass=0;pass<3&&moves<32;pass++){
+    const lanes=collect();let changed=false;
+    for(const lane of lanes){
+      const {a,b,points,i,net}=lane;
+      if(i===0||i+2>=points.length||points[i-1].y!==a.y||points[i+2].y!==b.y)continue;
+      if(!lanes.some(other=>other.net!==net&&overlaps(lane,other)&&Math.abs(a.x-other.a.x)<clearance))continue;
+      const oldX=a.x,minX=Math.min(points[i-1].x,points[i+2].x),maxX=Math.max(points[i-1].x,points[i+2].x);let before;
+      for(const offset of [clearance,-clearance,2*clearance,-2*clearance,3*clearance,-3*clearance]){
+        const x=oldX+offset;if(x<=minX+4||x>=maxX-4)continue;
+        if(lanes.some(other=>other!==lane&&other.net!==net&&overlaps(lane,other)&&Math.abs(x-other.a.x)<clearance))continue;
+        before??=wireCrossings(graph);
+        a.x=b.x=x;
+        const segmentHits=points.slice(i,i+3).some((end,j)=>{
+          const start=points[i+j-1];
+          return graph.children.some(node=>{
+            const left=node.x+.01,right=node.x+node.width-.01,top=node.y+.01,bottom=node.y+node.height-.01;
+            return start.y===end.y?start.y>top&&start.y<bottom&&Math.max(start.x,end.x)>left&&Math.min(start.x,end.x)<right:start.x>left&&start.x<right&&Math.max(start.y,end.y)>top&&Math.min(start.y,end.y)<bottom;
+          });
+        });
+        if(!segmentHits&&wireCrossings(graph)<=before){changed=true;moves++;break}
+        a.x=b.x=oldX;
+      }
+      if(moves>=32)break;
+    }
+    if(!changed)break;
+  }
+  return graph;
+}
 export function untangleGateApproaches(graph){
   const pointsOf=edge=>{const s=edge.sections[0];return [s.startPoint,...(s.bendPoints||[]),s.endPoint]};
   for(const node of graph.children.filter(n=>!n.tiedInputs&&['AND','OR','NAND','NOR','XOR'].includes(n.type))){
@@ -82,43 +117,6 @@ export function untangleGateApproaches(graph){
     if(hitsNode||wireCrossings(graph)>=before){routes.forEach((r,i)=>r.edge.sections=saved[i]);node.ports.forEach((p,i)=>p.y=oldPorts[i])}
   }
   return graph;
-}
-async function layoutWithOrderedPins(graph){
-  // Commutative gates may permute inputs without changing their function.
-  // Let crossing minimization choose their order, then restore our exact pin
-  // spacing and centered outputs before the final orthogonal routing pass.
-  const flexible=structuredClone(graph);
-  const gates=flexible.children.filter(node=>!node.tiedInputs&&['AND','OR','NAND','NOR','XOR'].includes(node.type));
-  if(!gates.some(node=>node.ports.length>2))return elk.layout(graph);
-  const baseline=await elk.layout(structuredClone(graph));
-  for(const node of gates){
-    node.layoutOptions['elk.portConstraints']='FIXED_SIDE';
-    for(const p of node.ports){delete p.x;delete p.y}
-  }
-  const ordering=await elk.layout(flexible);
-  for(const node of graph.children){
-    if(!gates.some(gate=>gate.id===node.id))continue;
-    const placed=ordering.children.find(gate=>gate.id===node.id);
-    const inputs=placed.ports.filter(p=>p.id.includes('-in-')).sort((a,b)=>a.y-b.y);
-    inputs.forEach((p,i)=>{node.ports.find(pin=>pin.id===p.id).y=(i+1)*node.bodyHeight/(inputs.length+1)});
-  }
-  const approachGraph=structuredClone(graph);
-  const candidate=await elk.layout(graph);
-  // The last routing bend, rather than the source gate's position, determines
-  // which input order avoids crossings immediately beside the target gate.
-  for(const node of approachGraph.children){
-    if(!gates.some(gate=>gate.id===node.id))continue;
-    const incoming=candidate.edges.filter(edge=>edge.targets[0].startsWith(`${node.id}-in-`));
-    const arrival=edge=>{
-      const section=edge.sections[0],points=[section.startPoint,...(section.bendPoints||[]),section.endPoint];
-      for(let i=points.length-2;i>0;i--)if(points[i].x===points[i-1].x&&points[i].y!==points[i-1].y)return points[i-1].y;
-      return section.startPoint.y;
-    };
-    incoming.sort((a,b)=>arrival(a)-arrival(b));
-    incoming.forEach((edge,i)=>{node.ports.find(p=>p.id===edge.targets[0]).y=(i+1)*node.bodyHeight/(incoming.length+1)});
-  }
-  const approach=await elk.layout(approachGraph);
-  return [baseline,candidate,approach].sort((a,b)=>wireCrossings(a,true)-wireCrossings(b,true)||wireCrossings(a)-wireCrossings(b))[0];
 }
 export function alignRailTaps(graph){
   const bus=graph.children.find(node=>node.type==='BUS');
@@ -154,6 +152,61 @@ export function alignRailTaps(graph){
   graph.height=Math.max(graph.height+shift,bottom+shift+24);
   return graph;
 }
+export function routeInChannels(graph){
+  const gap=28,bus=graph.children.find(n=>n.type==='BUS'),owners=new Map(graph.children.flatMap(n=>n.ports.map(p=>[p.id,n]))),depths=new Map();
+  const depth=node=>{
+    if(depths.has(node.id))return depths.get(node.id);
+    const incoming=graph.edges.filter(e=>owners.get(e.targets[0])===node);
+    const value=node===bus?0:Math.max(0,...incoming.map(e=>depth(owners.get(e.sources[0]))))+1;
+    depths.set(node.id,value);return value;
+  };
+  graph.children.forEach(depth);
+  const nodes=graph.children.filter(n=>n!==bus),tracks=new Map(),levels=Math.max(...nodes.map(depth));
+  if(bus){bus.x=24;bus.y=24}
+  let left=bus?bus.x+bus.width+56:24,top=64;
+  for(let level=1;level<=levels;level++){
+    const layer=nodes.filter(n=>depth(n)===level).sort((a,b)=>a.y-b.y||a.id.localeCompare(b.id)),width=Math.max(...layer.map(n=>n.width));
+    for(const node of layer){node.x=left;node.y=top;top+=node.height+gap*2}
+    // Higher source gates take the farther lanes. Their wires turn down
+    // beyond the lower gates' shorter output runs, rather than crossing them.
+    const sources=[...new Set(graph.edges.filter(e=>depth(owners.get(e.sources[0]))===level).map(e=>e.sources[0]))].sort((a,b)=>{
+      const na=owners.get(a),nb=owners.get(b);
+      return nb.y+nb.ports.find(p=>p.id===b).y-na.y-na.ports.find(p=>p.id===a).y;
+    });
+    sources.forEach((id,i)=>tracks.set(id,left+width+gap*(i+1)));
+    left+=width+gap*(sources.length+3);
+  }
+  // Reorder interchangeable pins by the incoming signal's position. Every
+  // gate has its own vertical band, so horizontal branches cannot overlap.
+  for(const node of nodes){
+    if(node.tiedInputs||!['AND','OR','NAND','NOR','XOR'].includes(node.type))continue;
+    const inputs=graph.edges.filter(e=>owners.get(e.targets[0])===node).sort((a,b)=>{
+      const na=owners.get(a.sources[0]),nb=owners.get(b.sources[0]);
+      // Direct rail inputs belong after gate outputs: their long horizontal
+      // runs then pass below the output nets' last branches.
+      const ya=na===bus?Number.MAX_SAFE_INTEGER:na.y,yb=nb===bus?Number.MAX_SAFE_INTEGER:nb.y;
+      return ya-yb||String(a.net||a.sources[0]).localeCompare(String(b.net||b.sources[0]));
+    });
+    inputs.forEach((e,i)=>{node.ports.find(p=>p.id===e.targets[0]).y=(i+1)*node.bodyHeight/(inputs.length+1)});
+  }
+  const taps=[];
+  for(const edge of graph.edges){
+    const source=owners.get(edge.sources[0]),target=owners.get(edge.targets[0]),pin=target.ports.find(p=>p.id===edge.targets[0]),endPoint={x:target.x+pin.x,y:target.y+pin.y};
+    let startPoint,bendPoints;
+    if(source===bus){
+      const old=bus.ports.find(p=>p.id===edge.sources[0]),id=`bus-${old.name}-channel-${edge.id}`;
+      taps.push({...old,id,x:bus.width,y:endPoint.y-bus.y});edge.sources=[id];
+      startPoint={x:bus.x+bus.width,y:endPoint.y};bendPoints=[];
+    }else{
+      const port=source.ports.find(p=>p.id===edge.sources[0]),x=tracks.get(edge.sources[0]);
+      startPoint={x:source.x+port.x,y:source.y+port.y};bendPoints=[{x,y:startPoint.y},{x,y:endPoint.y}];
+    }
+    edge.sections=[{id:`${edge.id}-channel`,startPoint,bendPoints,endPoint}];
+  }
+  if(bus){bus.ports=taps;bus.height=bus.bodyHeight=top-bus.y}
+  graph.width=left+24;graph.height=top+24;
+  return graph;
+}
 export async function layoutCircuit(tree,variableCount){
   const cacheKey=variableCount||0;
   if(layouts.get(tree)?.has(cacheKey))return layouts.get(tree).get(cacheKey);
@@ -168,7 +221,7 @@ export async function layoutCircuit(tree,variableCount){
     aliases.push({first:first.id,duplicate});
     graph.edges=graph.edges.filter(edge=>edge!==duplicate);
   }
-  const pending=layoutWithOrderedPins(graph).then(untangleGateApproaches).then(alignRailTaps).then(placed=>{
+  const pending=elk.layout(graph).then(routeInChannels).then(placed=>{
     for(const {first,duplicate} of aliases){
       const feed=placed.edges.find(edge=>edge.id===first);
       placed.edges.push({...structuredClone(feed),id:duplicate.id,targets:duplicate.targets,sharedFeed:true});
@@ -195,6 +248,43 @@ export function renderCircuit(graph,palette){
     });
   }
   const netOf=edge=>edge.net||edge.sources[0];
+  // Reserve space around real branch points. A different net must detour
+  // around a junction before crossing its rail, never jump over its dot.
+  const initialSegments=paths.flatMap(p=>p.points.slice(1).map((b,i)=>({a:p.points[i],b,net:netOf(p.edge)})));
+  const protectedJunctions=[];
+  for(const s of initialSegments)for(const p of [s.a,s.b]){
+    const directions=new Set();
+    for(const t of initialSegments){
+      if(t.net!==s.net)continue;
+      if(t.a.y===t.b.y&&p.y===t.a.y&&p.x>=Math.min(t.a.x,t.b.x)&&p.x<=Math.max(t.a.x,t.b.x)){if(p.x>Math.min(t.a.x,t.b.x))directions.add('W');if(p.x<Math.max(t.a.x,t.b.x))directions.add('E')}
+      if(t.a.x===t.b.x&&p.x===t.a.x&&p.y>=Math.min(t.a.y,t.b.y)&&p.y<=Math.max(t.a.y,t.b.y)){if(p.y>Math.min(t.a.y,t.b.y))directions.add('N');if(p.y<Math.max(t.a.y,t.b.y))directions.add('S')}
+    }
+    if(directions.size>=3&&!protectedJunctions.some(j=>j.net===s.net&&j.x===p.x&&j.y===p.y))protectedJunctions.push({...p,net:s.net});
+  }
+  for(const path of paths){
+    if(path.edge.id.startsWith('rail-')||path.edge.id.startsWith('tap-'))continue;
+    for(const junction of protectedJunctions){
+      if(junction.net===netOf(path.edge))continue;
+      for(let i=1;i<path.points.length;i++){
+        const a=path.points[i-1],b=path.points[i],horizontal=a.y===b.y;
+        const along=horizontal?'x':'y',across=horizontal?'y':'x';
+        if(Math.abs(a[across]-junction[across])>8||junction[along]<=Math.min(a[along],b[along])+12||junction[along]>=Math.max(a[along],b[along])-12)continue;
+        const direction=Math.sign(b[along]-a[along]);
+        for(const offset of [-18,18,-30,30]){
+          const q1={...a,[along]:junction[along]-12*direction},q2={...q1,[across]:junction[across]+offset},q3={...q2,[along]:junction[along]+12*direction},q4={...q3,[across]:b[across]},detour=[q1,q2,q3,q4];
+          if(detour.some(p=>p.x<0||p.y<0||p.x>graph.width||p.y>graph.height))continue;
+          const blocked=detour.slice(1).some((end,k)=>{
+            const start=detour[k];
+            return graph.children.some(node=>{
+              const x0=node.x+.01,x1=node.x+node.width-.01,y0=node.y+.01,y1=node.y+node.height-.01;
+              return start.y===end.y?start.y>y0&&start.y<y1&&Math.max(start.x,end.x)>x0&&Math.min(start.x,end.x)<x1:start.x>x0&&start.x<x1&&Math.max(start.y,end.y)>y0&&Math.min(start.y,end.y)<y1;
+            })||protectedJunctions.some(j=>j.net!==netOf(path.edge)&&(start.y===end.y?Math.abs(start.y-j.y)<10&&j.x>=Math.min(start.x,end.x)&&j.x<=Math.max(start.x,end.x):Math.abs(start.x-j.x)<10&&j.y>=Math.min(start.y,end.y)&&j.y<=Math.max(start.y,end.y)));
+          });
+          if(!blocked){path.points.splice(i,0,...detour);i+=4;break}
+        }
+      }
+    }
+  }
   const segments=paths.flatMap(p=>p.points.slice(1).map((b,i)=>({a:p.points[i],b,net:netOf(p.edge)})));
   const horizontal=segments.filter(s=>s.a.y===s.b.y&&s.a.x!==s.b.x),vertical=segments.filter(s=>s.a.x===s.b.x&&s.a.y!==s.b.y);
   // Crossing nets get a visible wire jump; only actual same-net branches get dots.
@@ -256,6 +346,6 @@ export function renderCircuit(graph,palette){
     symbols+=`<g data-node="${id}" data-type="${type}" transform="translate(${x},${y})" fill="${bg}" stroke="${text}" stroke-width="1.7"><title>${esc(type==='INPUT'?node.name:type)}</title>${body}</g>`;
   }
   const dots=[...junctions.values(),...branchDots].map(p=>`<circle data-junction="true" cx="${p.x}" cy="${p.y}" r="3" fill="${muted}"/>`).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${graph.width}" height="${graph.height}" viewBox="0 0 ${graph.width} ${graph.height}" role="img" aria-label="Logic circuit for the selected expression" font-family="system-ui,sans-serif"><desc>Signals flow left to right. Dots mark connected wire branches; wire jumps mark crossings without connections. Small output circles indicate inversion.</desc><rect width="100%" height="100%" fill="${bg}"/>${wires}${dots}${[...crossings.values()].join('')}${symbols}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${graph.width}" height="${graph.height}" viewBox="0 0 ${graph.width} ${graph.height}" role="img" aria-label="Logic circuit for the selected expression" font-family="system-ui,sans-serif"><desc>Signals flow left to right. Dots mark connected wire branches; wire jumps mark crossings without connections. Small output circles indicate inversion.</desc><rect width="100%" height="100%" fill="${bg}"/>${wires}${[...crossings.values()].join('')}${dots}${symbols}</svg>`;
 }
 export async function circuitSvg(tree,palette,variableCount){return renderCircuit(await layoutCircuit(tree,variableCount),palette)}
