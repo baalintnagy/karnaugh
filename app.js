@@ -1,4 +1,4 @@
-import {names,orderNumber,expression,sop} from './logic.js';
+import {names,orderNumber,expression,sop,matches} from './logic.js';
 import {mapSvg,circuitSvg,timingSvg,colors,groupOutline} from './svg.js';
 const $=id=>document.getElementById(id);
 let n=3,values=[0,1,1,1,0,0,1,1],result=null,form='minimal',worker=null,revision=0,svg='';
@@ -28,17 +28,42 @@ function table(){
   $('row-count').textContent=`${values.length} rows`;$('variables').value=n;$('minus').disabled=n===1;$('plus').disabled=n===8;
 }
 const mathSource=source=>'`'+source+'`';
+const legendResize=new ResizeObserver(entries=>{
+  for(const {target} of entries){
+    const border=target.querySelector('.legend-outline rect');
+    if(border){border.setAttribute('width',Math.max(0,target.offsetWidth-3));border.setAttribute('height',Math.max(0,target.offsetHeight-3))}
+  }
+});
+function highlightTerms(indices=[]){
+  const selected=new Set(indices),cubes=result?.ones||[];
+  $('map').classList.toggle('has-term-highlight',selected.size>0);
+  $('map').querySelectorAll('[data-map-group]').forEach(group=>group.classList.toggle('term-highlight',selected.has(Number(group.dataset.mapGroup)-1)));
+  $('map').querySelectorAll('.map-cell').forEach(cell=>cell.classList.toggle('term-highlight',indices.some(i=>matches(cubes[i],Number(cell.dataset.index)))));
+  $('legend').querySelectorAll('.legend-item').forEach((item,i)=>item.classList.toggle('term-highlight',selected.has(i)));
+}
 function map(){
+  $('map').classList.remove('has-term-highlight');
   $('map').innerHTML=mapSvg(n,values,result?.ones||[]);applyZoom('map');
+  $('map').querySelectorAll('.map-cell').forEach(cell=>{
+    const highlight=()=>highlightTerms((result?.ones||[]).flatMap((cube,i)=>matches(cube,Number(cell.dataset.index))?[i]:[]));
+    cell.addEventListener('mouseenter',highlight);cell.addEventListener('mouseleave',()=>highlightTerms());
+    cell.addEventListener('focus',highlight);cell.addEventListener('blur',()=>highlightTerms());
+  });
   try{window.MathJax?.typesetClear?.([$('legend')])}catch{}
+  $('legend').querySelectorAll('.legend-item').forEach(item=>legendResize.unobserve(item));
   $('legend').replaceChildren();
   if(result)result.ones.forEach((c,i)=>{
     const item=document.createElement('span');item.className='legend-item';
+    item.tabIndex=0;item.setAttribute('aria-label',`Highlight term ${i+1} on the Karnaugh map`);
+    item.addEventListener('mouseenter',()=>highlightTerms([i]));item.addEventListener('mouseleave',()=>highlightTerms());
+    item.addEventListener('focus',()=>highlightTerms([i]));item.addEventListener('blur',()=>highlightTerms());
     const dot=document.createElement('span'),outline=groupOutline(i);
     dot.title=outline.name+' outline';
     dot.innerHTML=`<svg width="32" height="12" viewBox="0 0 32 12" aria-hidden="true"><path d="M2,6 H30" fill="none" stroke="${colors[i%colors.length]}" stroke-width="2" ${outline.attributes}/></svg>`;
     const term=document.createElement('span');term.textContent=mathSource(expression(sop(n,[c])));
-    item.append(dot,term);$('legend').append(item);
+    const border=document.createElement('span');
+    border.innerHTML=`<svg class="legend-outline" aria-hidden="true"><rect x="1.5" y="1.5" rx="5" fill="none" stroke="${colors[i%colors.length]}" stroke-width="2" ${outline.attributes}/></svg>`;
+    item.append(dot,term,border);$('legend').append(item);legendResize.observe(item);
   });
 }
 function palette(){const style=getComputedStyle(document.documentElement);return Object.fromEntries(['text','muted','line','accent','bg'].map(k=>[k,style.getPropertyValue('--'+(k==='bg'?'panel':k)).trim()]))}
