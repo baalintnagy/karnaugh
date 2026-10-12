@@ -38,14 +38,16 @@ export function circuitGraph(tree,variableCount){
 }
 let elk;
 const layouts=new WeakMap();
-export function wireCrossings(graph){
+export function wireCrossings(graph,nearGate=false){
   const segments=graph.edges.flatMap(edge=>(edge.sections||[]).flatMap(section=>{
     const points=[section.startPoint,...(section.bendPoints||[]),section.endPoint];
     return points.slice(1).map((b,i)=>({a:points[i],b,net:edge.net||edge.sources[0]}));
   }));
   const horizontal=segments.filter(s=>s.a.y===s.b.y),vertical=segments.filter(s=>s.a.x===s.b.x);
   let count=0;
-  for(const h of horizontal)for(const v of vertical)if(h.net!==v.net&&v.a.x>Math.min(h.a.x,h.b.x)&&v.a.x<Math.max(h.a.x,h.b.x)&&h.a.y>Math.min(v.a.y,v.b.y)&&h.a.y<Math.max(v.a.y,v.b.y))count++;
+  for(const h of horizontal)for(const v of vertical)if(h.net!==v.net&&v.a.x>Math.min(h.a.x,h.b.x)&&v.a.x<Math.max(h.a.x,h.b.x)&&h.a.y>Math.min(v.a.y,v.b.y)&&h.a.y<Math.max(v.a.y,v.b.y)){
+    if(!nearGate||graph.children.some(node=>node.ports.some(p=>p.id.includes('-in-'))&&v.a.x>=node.x-48&&v.a.x<node.x&&h.a.y>=node.y&&h.a.y<=node.y+node.bodyHeight))count++;
+  }
   return count;
 }
 async function layoutWithOrderedPins(graph){
@@ -67,8 +69,23 @@ async function layoutWithOrderedPins(graph){
     const inputs=placed.ports.filter(p=>p.id.includes('-in-')).sort((a,b)=>a.y-b.y);
     inputs.forEach((p,i)=>{node.ports.find(pin=>pin.id===p.id).y=(i+1)*node.bodyHeight/(inputs.length+1)});
   }
+  const approachGraph=structuredClone(graph);
   const candidate=await elk.layout(graph);
-  return wireCrossings(candidate)<=wireCrossings(baseline)?candidate:baseline;
+  // The last routing bend, rather than the source gate's position, determines
+  // which input order avoids crossings immediately beside the target gate.
+  for(const node of approachGraph.children){
+    if(!gates.some(gate=>gate.id===node.id))continue;
+    const incoming=candidate.edges.filter(edge=>edge.targets[0].startsWith(`${node.id}-in-`));
+    const arrival=edge=>{
+      const section=edge.sections[0],points=[section.startPoint,...(section.bendPoints||[]),section.endPoint];
+      for(let i=points.length-2;i>0;i--)if(points[i].x===points[i-1].x&&points[i].y!==points[i-1].y)return points[i-1].y;
+      return section.startPoint.y;
+    };
+    incoming.sort((a,b)=>arrival(a)-arrival(b));
+    incoming.forEach((edge,i)=>{node.ports.find(p=>p.id===edge.targets[0]).y=(i+1)*node.bodyHeight/(incoming.length+1)});
+  }
+  const approach=await elk.layout(approachGraph);
+  return [baseline,candidate,approach].sort((a,b)=>wireCrossings(a,true)-wireCrossings(b,true)||wireCrossings(a)-wireCrossings(b))[0];
 }
 export function alignRailTaps(graph){
   const bus=graph.children.find(node=>node.type==='BUS');
