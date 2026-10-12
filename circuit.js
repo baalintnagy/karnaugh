@@ -5,10 +5,11 @@ export function circuitGraph(tree,variableCount){
   function add(t){
     const children=(t.children||[]).map(add),key=t.type+':'+(t.name??t.value??'')+':'+children.map(c=>c.id).join(',');
     if(intern.has(key))return intern.get(key);
-    const id='n'+nodes.length,bodyHeight=children.length?Math.max(48,children.length*14+12):32,width=children.length?94:44;
-    const node={id,type:t.type,name:t.name,value:t.value,bodyHeight,width,height:bodyHeight+(children.length?24:0),
+    const tiedInputs=['NAND','NOR'].includes(t.type)&&children.length===2&&children[0].id===children[1].id;
+    const id='n'+nodes.length,bodyHeight=children.length?Math.max(48,children.length*14+12):32,width=children.length?94+(tiedInputs?24:0):44;
+    const node={id,type:t.type,name:t.name,value:t.value,tiedInputs,bodyHeight,width,height:bodyHeight+(children.length?24:0),
       layoutOptions:{'elk.portConstraints':'FIXED_POS'},
-      ports:[...children.map((_,i)=>port(`${id}-in-${i}`,0,(i+1)*bodyHeight/(children.length+1),'WEST')),port(`${id}-out`,width,bodyHeight/2,'EAST')]};
+      ports:[...children.map((_,i)=>port(`${id}-in-${i}`,0,tiedInputs?bodyHeight/2:(i+1)*bodyHeight/(children.length+1),'WEST')),port(`${id}-out`,width,bodyHeight/2,'EAST')]};
     nodes.push(node);intern.set(key,node);
     children.forEach((c,i)=>edges.push({id:'e'+edges.length,sources:[`${c.id}-out`],targets:[`${id}-in-${i}`]}));
     return node;
@@ -52,7 +53,7 @@ async function layoutWithOrderedPins(graph){
   // Let crossing minimization choose their order, then restore our exact pin
   // spacing and centered outputs before the final orthogonal routing pass.
   const flexible=structuredClone(graph);
-  const gates=flexible.children.filter(node=>['AND','OR','NAND','NOR','XOR'].includes(node.type));
+  const gates=flexible.children.filter(node=>!node.tiedInputs&&['AND','OR','NAND','NOR','XOR'].includes(node.type));
   if(!gates.some(node=>node.ports.length>2))return elk.layout(graph);
   const baseline=await elk.layout(structuredClone(graph));
   for(const node of gates){
@@ -110,14 +111,27 @@ export async function layoutCircuit(tree,variableCount){
     if(typeof window==='undefined'){const {default:ELK}=await import('elkjs/lib/elk.bundled.js');elk=new ELK()}
     else elk=new window.ELK({workerUrl:new URL('./vendor/elk-worker.min.js',import.meta.url).href});
   }
-  const pending=layoutWithOrderedPins(circuitGraph(tree,variableCount)).then(alignRailTaps);
+  const graph=circuitGraph(tree,variableCount),aliases=[];
+  for(const node of graph.children.filter(node=>node.tiedInputs)){
+    const first=graph.edges.find(edge=>edge.targets[0]===`${node.id}-in-0`);
+    const duplicate=graph.edges.find(edge=>edge.targets[0]===`${node.id}-in-1`);
+    aliases.push({first:first.id,duplicate});
+    graph.edges=graph.edges.filter(edge=>edge!==duplicate);
+  }
+  const pending=layoutWithOrderedPins(graph).then(alignRailTaps).then(placed=>{
+    for(const {first,duplicate} of aliases){
+      const feed=placed.edges.find(edge=>edge.id===first);
+      placed.edges.push({...structuredClone(feed),id:duplicate.id,targets:duplicate.targets,sharedFeed:true});
+    }
+    return placed;
+  });
   if(!layouts.has(tree))layouts.set(tree,new Map());layouts.get(tree).set(cacheKey,pending);
   try{return await pending}catch(error){layouts.get(tree).delete(cacheKey);throw error}
 }
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 export function renderCircuit(graph,palette){
   const {text,muted,line,accent,bg}=palette;
-  const paths=graph.edges.flatMap(edge=>(edge.sections||[]).map(section=>({edge,points:[section.startPoint,...(section.bendPoints||[]),section.endPoint]})));
+  const paths=graph.edges.filter(edge=>!edge.sharedFeed).flatMap(edge=>(edge.sections||[]).map(section=>({edge,points:[section.startPoint,...(section.bendPoints||[]),section.endPoint]})));
   const bus=graph.children.find(node=>node.type==='BUS'),branchDots=[];
   if(bus){
     bus.inputNames.forEach((name,i)=>{
@@ -168,9 +182,10 @@ export function renderCircuit(graph,palette){
       if(['AND','NAND'].includes(type))body=`<path d="M12,0 H42 A30,${cy} 0 0 1 42,${h} H12 Z"/>`;
       else if(type==='NOT')body=`<path d="M12,0 L72,${cy} L12,${h} Z"/>`;
       else body=`<path d="M12,0 Q52,0 72,${cy} Q52,${h} 12,${h} Q32,${cy} 12,0 Z"/>${type==='XOR'?`<path d="M7,0 Q27,${cy} 7,${h}" fill="none"/>`:''}`;
-      for(const p of node.ports.filter(p=>p.id.includes('-in-'))){const boundary=isOr?12+40*(p.y/h)*(1-p.y/h):12;body+=`<path d="M0,${p.y} H${boundary}" fill="none"/>`}
+      for(const [i,p] of node.ports.filter(p=>p.id.includes('-in-')).entries()){const pinY=node.tiedInputs?(i+1)*h/3:p.y;const boundary=isOr?12+40*(pinY/h)*(1-pinY/h):12;body+=`<path d="M0,${pinY} H${boundary}" fill="none"/>`}
       body+=inverted?`<path d="M72,${cy} H74 M82,${cy} H94" fill="none"/><circle cx="78" cy="${cy}" r="4"/>`:`<path d="M72,${cy} H94" fill="none"/>`;
       body+=`<text x="42" y="${h+17}" text-anchor="middle" fill="${muted}" stroke="none" font-size="10">${type}</text>`;
+      if(node.tiedInputs)body=`<g transform="translate(24,0)">${body}</g><path data-local-split="true" d="M0,${cy} H12 M12,${h/3} V${2*h/3} M12,${h/3} H24 M12,${2*h/3} H24" fill="none" stroke="${muted}"/><circle data-junction="true" cx="12" cy="${cy}" r="3" fill="${muted}" stroke="none"/>`;
     }
     symbols+=`<g data-node="${id}" data-type="${type}" transform="translate(${x},${y})" fill="${bg}" stroke="${text}" stroke-width="1.7"><title>${esc(type==='INPUT'?node.name:type)}</title>${body}</g>`;
   }

@@ -4,6 +4,21 @@ import {circuitGraph,layoutCircuit,renderCircuit,wireCrossings} from '../circuit
 import ELK from 'elkjs/lib/elk.bundled.js';
 import {solve,evaluate} from '../logic.js';
 const near=(a,b)=>Math.abs(a-b)<.001;
+test('NAND and NOR inverters share one routed feed and split next to the gate',async()=>{
+ for(const type of ['NAND','NOR']){
+  const input={type:'INPUT',name:'A'},tree={type,children:[input,input]};
+  const graph=await layoutCircuit(tree,1),bus=graph.children.find(node=>node.type==='BUS');
+  assert.equal(bus.ports.length,1);
+  const feeds=graph.edges.filter(edge=>edge.targets[0].includes('-in-'));
+  assert.equal(feeds.length,2);
+  assert.equal(feeds.filter(edge=>edge.sharedFeed).length,1);
+  assert.equal(feeds[0].sources[0],feeds[1].sources[0]);
+  assert.deepEqual(feeds[0].sections,feeds[1].sections);
+  const svg=renderCircuit(graph,{text:'#fff',muted:'#999',line:'#555',accent:'#afa',bg:'#111'});
+  assert.equal((svg.match(/data-local-split="true"/g)||[]).length,1);
+  for(let row=0;row<2;row++)assert.equal(evalGraph(graph,1,row),1-row);
+ }
+});
 test('gate pin ordering reduces crossings in a dense canonical circuit',async()=>{
  let state=2;
  const values=Array.from({length:32},()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return +(state/2**32>.5)});
