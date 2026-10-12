@@ -6,7 +6,7 @@ export function circuitGraph(tree,variableCount){
     const children=(t.children||[]).map(add),key=t.type+':'+(t.name??t.value??'')+':'+children.map(c=>c.id).join(',');
     if(intern.has(key))return intern.get(key);
     const tiedInputs=['NAND','NOR'].includes(t.type)&&children.length===2&&children[0].id===children[1].id;
-    const id='n'+nodes.length,bodyHeight=children.length?Math.max(48,children.length*14+12):32,width=children.length?94+(tiedInputs?24:0):44;
+    const id='n'+nodes.length,bodyHeight=children.length?Math.max(48,children.length*24+24):32,width=children.length?94+(tiedInputs?24:0):44;
     const node={id,type:t.type,name:t.name,value:t.value,tiedInputs,bodyHeight,width,height:bodyHeight+(children.length?24:0),
       layoutOptions:{'elk.portConstraints':'FIXED_POS'},
       ports:[...children.map((_,i)=>port(`${id}-in-${i}`,0,tiedInputs?bodyHeight/2:(i+1)*bodyHeight/(children.length+1),'WEST')),port(`${id}-out`,width,bodyHeight/2,'EAST')]};
@@ -34,7 +34,7 @@ export function circuitGraph(tree,variableCount){
     const width=48+inputNames.length*26,height=Math.max(140,80+taps.length*18);
     bus={id:'input-bus',type:'BUS',inputNames,width,height,bodyHeight:height,layoutOptions:{'elk.portConstraints':'FIXED_POS','elk.layered.layering.layerConstraint':'FIRST'},ports:taps.map((tap,i)=>({...port(tap.id,width,60+i*18,'EAST'),name:tap.name}))};
   }
-  return {id:'circuit',layoutOptions:{'elk.algorithm':'layered','elk.direction':'RIGHT','elk.edgeRouting':'ORTHOGONAL','elk.layered.considerModelOrder.strategy':'NODES_AND_EDGES','elk.padding':'[top=24,left=24,bottom=24,right=24]','elk.spacing.nodeNode':'32','elk.spacing.edgeNode':'16','elk.layered.spacing.nodeNodeBetweenLayers':'80','elk.layered.spacing.edgeEdgeBetweenLayers':'12','elk.layered.mergeEdges':'false','elk.randomSeed':'1'},children:[...(bus?[bus]:[]),...nodes.filter(node=>node.type!=='INPUT')],edges};
+  return {id:'circuit',layoutOptions:{'elk.algorithm':'layered','elk.direction':'RIGHT','elk.edgeRouting':'ORTHOGONAL','elk.layered.considerModelOrder.strategy':'NODES_AND_EDGES','elk.padding':'[top=24,left=24,bottom=24,right=24]','elk.spacing.nodeNode':'32','elk.spacing.edgeNode':'24','elk.spacing.edgeEdge':'24','elk.layered.spacing.nodeNodeBetweenLayers':'120','elk.layered.spacing.edgeEdgeBetweenLayers':'24','elk.layered.mergeEdges':'false','elk.randomSeed':'1'},children:[...(bus?[bus]:[]),...nodes.filter(node=>node.type!=='INPUT')],edges};
 }
 let elk;
 const layouts=new WeakMap();
@@ -49,6 +49,39 @@ export function wireCrossings(graph,nearGate=false){
     if(!nearGate||graph.children.some(node=>node.ports.some(p=>p.id.includes('-in-'))&&v.a.x>=node.x-48&&v.a.x<node.x&&h.a.y>=node.y&&h.a.y<=node.y+node.bodyHeight))count++;
   }
   return count;
+}
+export function untangleGateApproaches(graph){
+  const pointsOf=edge=>{const s=edge.sections[0];return [s.startPoint,...(s.bendPoints||[]),s.endPoint]};
+  for(const node of graph.children.filter(n=>!n.tiedInputs&&['AND','OR','NAND','NOR','XOR'].includes(n.type))){
+    const incoming=graph.edges.filter(e=>e.targets[0].startsWith(`${node.id}-in-`));
+    if(incoming.length<2)continue;
+    const cut=node.x-16*(incoming.length+2),routes=[];
+    for(const edge of incoming){
+      const points=pointsOf(edge);let entry=-1;
+      for(let i=0;i<points.length-1;i++)if(points[i].y===points[i+1].y&&points[i].x<=cut&&points[i+1].x>=cut&&points.slice(i+1).every(p=>p.x>=cut))entry=i;
+      if(entry<0)break;
+      routes.push({edge,points,entry,y:points[entry].y});
+    }
+    if(routes.length!==incoming.length)continue;
+    routes.sort((a,b)=>a.y-b.y);
+    const pinY=r=>node.ports.find(p=>p.id===r.edge.targets[0]).y;
+    if(routes.every((r,i)=>!i||pinY(routes[i-1])<=pinY(r)))continue;
+    const saved=routes.map(r=>structuredClone(r.edge.sections)),oldPorts=node.ports.map(p=>p.y),before=wireCrossings(graph);
+    routes.forEach((r,i)=>{
+      const pin=node.ports.find(p=>p.id===r.edge.targets[0]),targetY=node.y+(i+1)*node.bodyHeight/(routes.length+1);
+      pin.y=targetY-node.y;
+      const lane=targetY>=r.y?node.x-16*(i+1):cut+16*(i+1);
+      const points=[...r.points.slice(0,r.entry+1),{x:lane,y:r.y},{x:lane,y:targetY},{x:node.x,y:targetY}];
+      r.edge.sections[0].bendPoints=points.slice(1,-1);r.edge.sections[0].endPoint=points.at(-1);
+    });
+    const hitsNode=routes.some(r=>{const p=pointsOf(r.edge);return p.slice(1).some((b,i)=>graph.children.some(other=>{
+      if(other===node)return false;
+      const a=p[i],left=other.x+.01,right=other.x+other.width-.01,top=other.y+.01,bottom=other.y+other.height-.01;
+      return a.y===b.y?a.y>top&&a.y<bottom&&Math.max(a.x,b.x)>left&&Math.min(a.x,b.x)<right:a.x>left&&a.x<right&&Math.max(a.y,b.y)>top&&Math.min(a.y,b.y)<bottom;
+    }))});
+    if(hitsNode||wireCrossings(graph)>=before){routes.forEach((r,i)=>r.edge.sections=saved[i]);node.ports.forEach((p,i)=>p.y=oldPorts[i])}
+  }
+  return graph;
 }
 async function layoutWithOrderedPins(graph){
   // Commutative gates may permute inputs without changing their function.
@@ -135,7 +168,7 @@ export async function layoutCircuit(tree,variableCount){
     aliases.push({first:first.id,duplicate});
     graph.edges=graph.edges.filter(edge=>edge!==duplicate);
   }
-  const pending=layoutWithOrderedPins(graph).then(alignRailTaps).then(placed=>{
+  const pending=layoutWithOrderedPins(graph).then(untangleGateApproaches).then(alignRailTaps).then(placed=>{
     for(const {first,duplicate} of aliases){
       const feed=placed.edges.find(edge=>edge.id===first);
       placed.edges.push({...structuredClone(feed),id:duplicate.id,targets:duplicate.targets,sharedFeed:true});
@@ -170,14 +203,30 @@ export function renderCircuit(graph,palette){
     let d=`M${points[0].x},${points[0].y}`;
     for(let i=1;i<points.length;i++){
       const a=points[i-1],b=points[i];
-      if(a.y===b.y&&a.x!==b.x){
-        const direction=Math.sign(b.x-a.x),jumps=[...new Set(vertical.filter(v=>v.net!==netOf(edge)&&v.a.x>Math.min(a.x,b.x)+5&&v.a.x<Math.max(a.x,b.x)-5&&a.y>Math.min(v.a.y,v.b.y)&&a.y<Math.max(v.a.y,v.b.y)).map(v=>v.a.x))].sort((x,y)=>direction*(x-y));
-        let previous=a.x;
-        for(const x of jumps){if(Math.abs(x-previous)<9)continue;d+=` L${x-4*direction},${a.y} Q${x},${a.y-7} ${x+4*direction},${a.y}`;previous=x}
-      }
       d+=` L${b.x},${b.y}`;
     }
     wires+=`<path data-edge="${edge.id}" data-source="${edge.sources[0]}" data-target="${edge.targets[0]||''}" d="${d}" fill="none" stroke="${muted}" stroke-width="1.7" stroke-linejoin="round"><title>${esc(edge.sources[0])}${edge.targets[0]?' → '+esc(edge.targets[0]):' input rail'}</title></path>`;
+  }
+  // Paint bridges above every wire, with a background knockout underneath.
+  // This avoids later paths painting over jumps, and handles vertical jumps
+  // when the intersection is too close to a horizontal bend.
+  const crossings=new Map();
+  for(const h of horizontal)for(const v of vertical){
+    const x=v.a.x,y=h.a.y;
+    if(h.net===v.net||x<Math.min(h.a.x,h.b.x)||x>Math.max(h.a.x,h.b.x)||y<Math.min(v.a.y,v.b.y)||y>Math.max(v.a.y,v.b.y))continue;
+    const key=`${x}:${y}`;if(crossings.has(key))continue;
+    const hx=Math.min(Math.abs(x-h.a.x),Math.abs(x-h.b.x)),vy=Math.min(Math.abs(y-v.a.y),Math.abs(y-v.b.y));
+    let d,under;
+    if(hx>1){const r=Math.min(5,hx/2);d=`M${x-r},${y} Q${x},${y-8} ${x+r},${y}`;under=`M${x},${Math.max(y-5,Math.min(v.a.y,v.b.y))} V${Math.min(y+5,Math.max(v.a.y,v.b.y))}`}
+    else if(vy>1){const r=Math.min(5,vy/2);d=`M${x},${y-r} Q${x+8},${y} ${x},${y+r}`;under=`M${Math.max(x-5,Math.min(h.a.x,h.b.x))},${y} H${Math.min(x+5,Math.max(h.a.x,h.b.x))}`}
+    else{
+      // Two bends touching: round one bend away from the contact point.
+      const turn=vertical.find(s=>s.net===h.net&&s.a.x===x&&(s.a.y===y||s.b.y===y));
+      if(!turn)continue;
+      const dx=h.a.x===x?1:-1,dy=turn.a.y===y?Math.sign(turn.b.y-y):Math.sign(turn.a.y-y);
+      d=`M${x+dx*5},${y} Q${x+dx*5},${y+dy*5} ${x},${y+dy*5}`;
+    }
+    crossings.set(key,`<g data-wire-crossing="true"><circle cx="${x}" cy="${y}" r="4" fill="${bg}"/>${under?`<path d="${under}" fill="none" stroke="${muted}" stroke-width="1.7"/>`:''}<path d="${d}" fill="none" stroke="${bg}" stroke-width="5"/><path d="${d}" fill="none" stroke="${muted}" stroke-width="1.7"/></g>`);
   }
   const junctions=new Map();
   for(const s of segments)for(const p of [s.a,s.b]){
@@ -207,6 +256,6 @@ export function renderCircuit(graph,palette){
     symbols+=`<g data-node="${id}" data-type="${type}" transform="translate(${x},${y})" fill="${bg}" stroke="${text}" stroke-width="1.7"><title>${esc(type==='INPUT'?node.name:type)}</title>${body}</g>`;
   }
   const dots=[...junctions.values(),...branchDots].map(p=>`<circle data-junction="true" cx="${p.x}" cy="${p.y}" r="3" fill="${muted}"/>`).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${graph.width}" height="${graph.height}" viewBox="0 0 ${graph.width} ${graph.height}" role="img" aria-label="Logic circuit for the selected expression" font-family="system-ui,sans-serif"><desc>Signals flow left to right. Dots mark connected wire branches; wire jumps mark crossings without connections. Small output circles indicate inversion.</desc><rect width="100%" height="100%" fill="${bg}"/>${wires}${dots}${symbols}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${graph.width}" height="${graph.height}" viewBox="0 0 ${graph.width} ${graph.height}" role="img" aria-label="Logic circuit for the selected expression" font-family="system-ui,sans-serif"><desc>Signals flow left to right. Dots mark connected wire branches; wire jumps mark crossings without connections. Small output circles indicate inversion.</desc><rect width="100%" height="100%" fill="${bg}"/>${wires}${dots}${[...crossings.values()].join('')}${symbols}</svg>`;
 }
 export async function circuitSvg(tree,palette,variableCount){return renderCircuit(await layoutCircuit(tree,variableCount),palette)}

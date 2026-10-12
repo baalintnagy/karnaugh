@@ -1,9 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {circuitGraph,layoutCircuit,renderCircuit,wireCrossings} from '../circuit.js';
+import {circuitGraph,layoutCircuit,renderCircuit,wireCrossings,untangleGateApproaches} from '../circuit.js';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import {solve,evaluate} from '../logic.js';
 const near=(a,b)=>Math.abs(a-b)<.001;
+test('local gate approach cleanup removes an input swap without changing connections',()=>{
+ const node={id:'g',type:'AND',x:100,y:0,width:94,height:124,bodyHeight:100,ports:[{id:'g-in-0',x:0,y:33},{id:'g-in-1',x:0,y:67}]};
+ const edge=(id,source,target,y,endY,x)=>({id,sources:[source],targets:[target],sections:[{startPoint:{x:0,y},bendPoints:[{x,y},{x,y:endY}],endPoint:{x:100,y:endY}}]});
+ const graph={children:[node],edges:[edge('a','A','g-in-1',20,67,80),edge('b','B','g-in-0',80,33,90)]};
+ assert.ok(wireCrossings(graph,true)>0);
+ untangleGateApproaches(graph);
+ assert.equal(wireCrossings(graph,true),0);
+ assert.equal(graph.edges[0].targets[0],'g-in-1');
+ for(const e of graph.edges)assert.ok(near(e.sections[0].endPoint.y,node.ports.find(p=>p.id===e.targets[0]).y));
+});
+test('wire jumps include contacts at another net bend',()=>{
+ const edge=(id,points)=>({id,sources:[id],targets:[],sections:[{startPoint:points[0],bendPoints:points.slice(1,-1),endPoint:points.at(-1)}]});
+ const graph={width:100,height:100,children:[],edges:[edge('a',[{x:0,y:30},{x:100,y:30}]),edge('b',[{x:50,y:30},{x:50,y:80},{x:80,y:80}])]};
+ const svg=renderCircuit(graph,{text:'#fff',muted:'#999',line:'#555',accent:'#afa',bg:'#111'});
+ assert.ok(svg.includes('Q50,22'));
+ assert.ok(svg.includes('data-wire-crossing="true"'));
+ assert.ok(!svg.includes('data-junction="true"'));
+});
+test('close crossings and crossings at horizontal bends each retain a visible bridge',()=>{
+ const edge=(id,points)=>({id,sources:[id],targets:[],sections:[{startPoint:points[0],bendPoints:points.slice(1,-1),endPoint:points.at(-1)}]});
+ const graph={width:100,height:100,children:[],edges:[edge('h',[{x:0,y:40},{x:50,y:40},{x:50,y:70}]),edge('v1',[{x:30,y:0},{x:30,y:90}]),edge('v2',[{x:36,y:0},{x:36,y:90}]),edge('v3',[{x:50,y:0},{x:50,y:90}])]};
+ const svg=renderCircuit(graph,{text:'#fff',muted:'#999',line:'#555',accent:'#afa',bg:'#111'});
+ assert.ok((svg.match(/data-wire-crossing="true"/g)||[]).length>=3);
+ assert.ok(svg.includes('stroke-width="5"'));
+});
 test('NAND and NOR inverters share one routed feed and split next to the gate',async()=>{
  for(const type of ['NAND','NOR']){
   const input={type:'INPUT',name:'A'},tree={type,children:[input,input]};
