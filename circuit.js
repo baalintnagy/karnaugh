@@ -155,6 +155,10 @@ export function alignRailTaps(graph){
 export function routeInChannels(graph){
   const gap=28,bus=graph.children.find(n=>n.type==='BUS'),owners=new Map(graph.children.flatMap(n=>n.ports.map(p=>[p.id,n]))),depths=new Map();
   const isInputInverter=node=>(node.type==='NOT'||node.tiedInputs)&&graph.edges.filter(e=>owners.get(e.targets[0])===node).every(e=>owners.get(e.sources[0])===bus);
+  const inverterName=node=>{
+    const incoming=graph.edges.find(e=>owners.get(e.targets[0])===node);
+    return incoming?.net||bus?.ports.find(p=>p.id===incoming?.sources[0])?.name||'';
+  };
   const depth=node=>{
     if(depths.has(node.id))return depths.get(node.id);
     const incoming=graph.edges.filter(e=>owners.get(e.targets[0])===node);
@@ -169,7 +173,10 @@ export function routeInChannels(graph){
   if(bus){bus.x=24;bus.y=24}
   let left=bus?bus.x+bus.width+56:24,top=64;
   for(let level=1;level<=levels;level++){
-    const layer=nodes.filter(n=>depth(n)===level).sort((a,b)=>a.y-b.y||a.id.localeCompare(b.id));
+    const layer=nodes.filter(n=>depth(n)===level).sort((a,b)=>{
+      if(isInputInverter(a)&&isInputInverter(b))return inverterName(a).localeCompare(inverterName(b))||a.id.localeCompare(b.id);
+      return a.y-b.y||a.id.localeCompare(b.id);
+    });
     if(!layer.length)continue;
     const width=Math.max(...layer.map(n=>n.width));
     for(const node of layer){node.x=left;node.y=top;top+=node.height+gap*2}

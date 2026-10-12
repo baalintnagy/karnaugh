@@ -4,6 +4,15 @@ import {circuitGraph,layoutCircuit,renderCircuit,wireCrossings,untangleGateAppro
 import ELK from 'elkjs/lib/elk.bundled.js';
 import {solve,evaluate} from '../logic.js';
 const near=(a,b)=>Math.abs(a-b)<.001;
+test('input inverters are ordered alphabetically top to bottom',async()=>{
+ for(const type of ['NOT','NAND','NOR']){
+  const children=['D','B','C','A'].map(name=>{const input={type:'INPUT',name};return {type,children:type==='NOT'?[input]:[input,input]}});
+  const graph=await layoutCircuit({type:'AND',children},4);
+  const inverters=graph.children.filter(n=>n.type===type).sort((a,b)=>a.y-b.y);
+  const order=inverters.map(node=>graph.edges.find(e=>e.targets[0]===node.id+'-in-0').net);
+  assert.deepEqual(order,['A','B','C','D']);
+ }
+});
 test('literal inverters, term gates and the combiner occupy distinct columns',async()=>{
  const input=name=>({type:'INPUT',name});
  for(const universal of [false,true]){
