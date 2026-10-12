@@ -191,6 +191,12 @@ export function routeInChannels(graph){
   }
   // Reorder interchangeable pins by the incoming signal's position. Every
   // gate has its own vertical band, so horizontal branches cannot overlap.
+  const lastRailConsumer=new Map();
+  for(const edge of graph.edges){
+    if(owners.get(edge.sources[0])!==bus)continue;
+    const target=owners.get(edge.targets[0]),name=edge.net||bus.ports.find(p=>p.id===edge.sources[0]).name;
+    if(!lastRailConsumer.has(name)||lastRailConsumer.get(name).y<target.y)lastRailConsumer.set(name,target);
+  }
   for(const node of nodes){
     if(node.tiedInputs||!['AND','OR','NAND','NOR','XOR'].includes(node.type))continue;
     const inputs=graph.edges.filter(e=>owners.get(e.targets[0])===node).sort((a,b)=>{
@@ -198,6 +204,14 @@ export function routeInChannels(graph){
       // Direct rail inputs belong after gate outputs: their long horizontal
       // runs then pass below the output nets' last branches.
       const ya=na===bus?Number.MAX_SAFE_INTEGER:na.y,yb=nb===bus?Number.MAX_SAFE_INTEGER:nb.y;
+      if(na===bus&&nb===bus){
+        const nameA=a.net||bus.ports.find(p=>p.id===a.sources[0]).name,nameB=b.net||bus.ports.find(p=>p.id===b.sources[0]).name;
+        const endsA=lastRailConsumer.get(nameA)===node,endsB=lastRailConsumer.get(nameB)===node;
+        // Rails ending here take the lower pins, rightmost rail first. The
+        // lower, leftward branches then pass beneath the other rail ends.
+        if(endsA!==endsB)return endsA?1:-1;
+        if(endsA)return nameB.localeCompare(nameA);
+      }
       return ya-yb||String(a.net||a.sources[0]).localeCompare(String(b.net||b.sources[0]));
     });
     inputs.forEach((e,i)=>{node.ports.find(p=>p.id===e.targets[0]).y=(i+1)*node.bodyHeight/(inputs.length+1)});
@@ -251,12 +265,13 @@ export function renderCircuit(graph,palette){
   const bus=graph.children.find(node=>node.type==='BUS'),branchDots=[];
   if(bus){
     bus.inputNames.forEach((name,i)=>{
-      const x=bus.x+24+i*26;
-      paths.push({edge:{id:`rail-${name}`,sources:[name],targets:[],net:name},points:[{x,y:bus.y+40},{x,y:bus.y+bus.height-16}]});
-      for(const p of bus.ports.filter(p=>p.name===name)){
+      const x=bus.x+24+i*26,taps=bus.ports.filter(p=>p.name===name);
+      const bottom=taps.length?Math.max(...taps.map(p=>bus.y+p.y)):bus.y+56;
+      paths.push({edge:{id:`rail-${name}`,sources:[name],targets:[],net:name},points:[{x,y:bus.y+40},{x,y:bottom}]});
+      for(const p of taps){
         const y=bus.y+p.y;
         paths.push({edge:{id:`tap-${p.id}`,sources:[name],targets:[p.id],net:name},points:[{x,y},{x:bus.x+p.x,y}]});
-        branchDots.push({x,y});
+        if(y<bottom)branchDots.push({x,y});
       }
     });
   }

@@ -4,6 +4,28 @@ import {circuitGraph,layoutCircuit,renderCircuit,wireCrossings,untangleGateAppro
 import ELK from 'elkjs/lib/elk.bundled.js';
 import {solve,evaluate} from '../logic.js';
 const near=(a,b)=>Math.abs(a-b)<.001;
+test('terminating input rails fan into the final term without staircase crossings',async()=>{
+ const tree={type:'AND',children:['A','B','C','D'].map(name=>({type:'INPUT',name}))};
+ const graph=await layoutCircuit(tree,4),bus=graph.children.find(n=>n.type==='BUS');
+ const ends=bus.ports.slice().sort((a,b)=>a.y-b.y).map(p=>p.name);
+ assert.deepEqual(ends,['D','C','B','A']);
+ const svg=renderCircuit(graph,{text:'#fff',muted:'#999',line:'#555',accent:'#afa',bg:'#111'});
+ assert.ok(!svg.includes('data-wire-crossing="true"'));
+ for(let row=0;row<16;row++)assert.equal(evalGraph(graph,4,row),evaluate(tree,4,row));
+});
+test('each input rail ends at its lowest tap; unused rails remain short and labeled',async()=>{
+ const input=name=>({type:'INPUT',name});
+ const graph=await layoutCircuit({type:'OR',children:[input('A'),{type:'AND',children:[input('B'),input('C')]}]},4);
+ const bus=graph.children.find(n=>n.type==='BUS'),svg=renderCircuit(graph,{text:'#fff',muted:'#999',line:'#555',accent:'#afa',bg:'#111'});
+ for(const name of ['A','B','C','D']){
+  const taps=bus.ports.filter(p=>p.name===name),bottom=taps.length?Math.max(...taps.map(p=>bus.y+p.y)):bus.y+56;
+  const path=svg.match(new RegExp(`data-edge="rail-${name}"[^>]* d="([^"]+)"`));
+  assert.ok(path);assert.ok(path[1].endsWith(','+bottom));
+  const x=bus.x+24+bus.inputNames.indexOf(name)*26;
+  assert.ok(!svg.includes(`data-junction="true" cx="${x}" cy="${bottom}"`));
+ }
+ assert.ok(svg.includes('data-input-rail="D"'));
+});
 test('input inverters are ordered alphabetically top to bottom',async()=>{
  for(const type of ['NOT','NAND','NOR']){
   const children=['D','B','C','A'].map(name=>{const input={type:'INPUT',name};return {type,children:type==='NOT'?[input]:[input,input]}});
@@ -144,7 +166,7 @@ test('input bus keeps A–H in order, retains unused inputs, and preserves tied 
  for(let i=0;i<256;i++)assert.equal(evalGraph(graph,8,i),values[i]);
  const svg=renderCircuit(graph,{text:'#fff',muted:'#999',line:'#555',accent:'#afa',bg:'#111'});
  assert.deepEqual([...svg.matchAll(/data-input-rail="([A-H])"/g)].map(m=>m[1]),bus.inputNames);
- assert.ok(svg.includes('data-junction="true"'));
+ assert.ok(!svg.includes('data-junction="true"'),'a single terminal rail tap is a bend, not a junction');
  const nand=circuitGraph(solve(2,[0,0,0,1]).forms.nand,2);
  for(let i=0;i<4;i++)assert.equal(evalGraph(nand,2,i),+(i===3));
  const constant=await layoutCircuit(solve(2,[1,1,1,1]).forms.minimal,2);
