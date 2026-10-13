@@ -15,7 +15,7 @@ function setupZoom(){
   for(const [id,name] of [['map','Karnaugh map'],['diagram','Logic circuit'],['timing','Timing diagram']]){
     const control=document.createElement('div');control.className='zoom-control';
     control.innerHTML=`<label for="${id}-zoom">Zoom<span class="sr-only"> ${name}</span></label><input id="${id}-zoom" type="range" min="25" max="200" step="5" value="100" aria-valuetext="100 percent"><output id="${id}-zoom-value" for="${id}-zoom">100%</output><button class="text-button" aria-label="Reset ${name.toLowerCase()} zoom">Reset</button>`;
-    $(id).after(control);
+    $(id).before(control);
     const slider=control.querySelector('input'),output=control.querySelector('output');
     const change=()=>{zoomLevels[id]=Number(slider.value);output.textContent=`${slider.value}%`;slider.setAttribute('aria-valuetext',`${slider.value} percent`);applyZoom(id)};
     slider.addEventListener('input',change);control.querySelector('button').onclick=()=>{slider.value='100';change()};
