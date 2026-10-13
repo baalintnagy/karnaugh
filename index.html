@@ -3,23 +3,24 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="Explore Boolean functions with truth tables, Karnaugh maps, minimal expressions, and logic circuits.">
-  <title>Karnaugh Studio · Boolean logic workbench</title>
+  <title>Karnaugh Solver · Boolean logic workbench</title>
   <link rel="canonical" href="https://baalintnagy.github.io/karnaugh/">
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="Karnaugh Studio">
-  <meta property="og:title" content="Karnaugh Studio · Boolean logic workbench">
+  <meta property="og:site_name" content="Karnaugh Solver">
+  <meta property="og:title" content="Karnaugh Solver · Boolean logic workbench">
   <meta property="og:description" content="Explore Boolean functions with truth tables, Karnaugh maps, minimal expressions, and logic circuits.">
   <meta property="og:url" content="https://baalintnagy.github.io/karnaugh/">
-  <meta property="og:image" content="https://baalintnagy.github.io/karnaugh/assets/social-preview.png">
+  <meta property="og:image" content="https://baalintnagy.github.io/karnaugh/assets/karnaugh-solver-social-preview.png">
   <meta property="og:image:type" content="image/png">
-  <meta property="og:image:width" content="1733">
-  <meta property="og:image:height" content="907">
-  <meta property="og:image:alt" content="Karnaugh Studio with a six-variable Karnaugh map and colored implicant groups.">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Karnaugh Solver with a six-variable Karnaugh map and colored implicant groups.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Karnaugh Studio · Boolean logic workbench">
+  <meta name="twitter:title" content="Karnaugh Solver · Boolean logic workbench">
   <meta name="twitter:description" content="Explore Boolean functions with truth tables, Karnaugh maps, minimal expressions, and logic circuits.">
-  <meta name="twitter:image" content="https://baalintnagy.github.io/karnaugh/assets/social-preview.png">
-  <meta name="twitter:image:alt" content="Karnaugh Studio with a six-variable Karnaugh map and colored implicant groups.">
+  <meta name="twitter:image" content="https://baalintnagy.github.io/karnaugh/assets/karnaugh-solver-social-preview.png">
+  <meta name="twitter:image:alt" content="Karnaugh Solver with a six-variable Karnaugh map and colored implicant groups.">
+  <link rel="icon" type="image/svg+xml" href="assets/karnaugh-solver-favicon.svg">
   <link rel="stylesheet" href="styles.css">
   <script>const systemTheme=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';let savedTheme;try{savedTheme=localStorage.getItem('theme')}catch{};document.documentElement.dataset.theme=['light','dark'].includes(savedTheme)?savedTheme:systemTheme;window.MathJax={loader:{load:['input/asciimath','output/chtml']},asciimath:{delimiters:[['`','`']]},output:{displayOverflow:'linebreak',linebreaks:{inline:true,width:'100%',lineleading:.35}},startup:{typeset:false}};</script>
   <script defer src="https://cdn.jsdelivr.net/npm/mathjax@4.0.0/startup.js"></script>
@@ -27,23 +28,23 @@
   <script type="module" src="app.js"></script>
 </head>
 <body>
-<header class="topbar"><a href="./" class="brand"><span class="brand-mark">K</span> Karnaugh<span class="brand-secondary">Studio</span></a><div class="header-actions"><span class="local-badge"><i></i> Runs in your browser</span><button id="theme" class="icon-button" aria-label="Switch to light theme">☼</button></div></header>
+<header class="topbar"><a href="./" class="brand">Karnaugh<span class="brand-secondary">Solver</span></a><div class="header-actions"><span class="local-badge"><i></i> Runs in your browser</span><button id="theme" class="icon-button" aria-label="Switch to light theme">☼</button></div></header>
 <main>
-  <div class="intro"><div><div class="eyebrow">LOGIC FUNCTION WORKBENCH</div><h1>Make sense of every bit<span>.</span></h1><p>From truth table to expressions.</p></div><div class="version-tag">01 — 08 VARIABLES</div></div>
+  <div class="intro"><div><div class="eyebrow">LOGIC FUNCTION WORKBENCH</div><h1>Make sense of every bit<span>.</span></h1></div><div class="version-tag">01 — 08 VARIABLES</div></div>
   <section class="workspace">
-    <aside class="panel input-panel"><div class="panel-heading"><h2><span class="step">01</span> Define your function</h2></div>
+    <aside class="panel input-panel"><div class="panel-heading"><h2>Define your function</h2></div>
       <label class="field-label" for="variables">Boolean variables <span>1–8</span></label><div class="variable-control"><button id="minus" aria-label="Remove a variable">−</button><input id="variables" type="number" min="1" max="8" value="3" aria-describedby="variables-help"><button id="plus" aria-label="Add a variable">+</button></div><p id="variables-help" class="small muted">A is the most significant input bit. Outputs cycle 0 → 1 → X; X means don't care.</p>
       <div class="table-toolbar"><h3>Truth table <span id="row-count"></span></h3><div><button id="clear" class="text-button">Clear</button><button id="invert" class="text-button">Invert</button></div></div>
+      <div class="truth-actions"><label for="preset" class="sr-only">Example function</label><select id="preset"><option value="">Load an example…</option value="majority">Majority vote</option><option value="parity">Odd parity / XOR</option><option value="first">First input / A</option></select><button id="random" class="secondary-button">Randomize</button></div>
       <div class="truth-scroll"><table id="truth-table"><caption class="sr-only">Click an output to cycle 0, 1, X</caption><thead></thead><tbody></tbody></table></div>
-      <div class="input-footer"><label for="preset" class="sr-only">Example function</label><select id="preset"><option value="">Load an example…</option value="majority">Majority vote</option><option value="parity">Odd parity / XOR</option><option value="first">First input / A</option></select><button id="random" class="secondary-button">Randomize</button></div>
     </aside>
     <div class="results">
       <section class="panel function-panel"><div><div class="eyebrow">FUNCTION ORDER NUMBER</div><div id="order" class="order-number"></div><div id="order-note" class="small muted">`N = sum f(i) · 2^i`<span class="separator">/</span> row 0 means the least significant bit</div></div><div class="function-stats"><span><strong id="ones">0</strong> minterms</span><span><strong id="groups">0</strong> groups</span><span><strong id="dont-cares">0</strong> X rows</span></div></section>
-      <section class="panel map-panel"><div class="panel-heading"><h2><span class="step">02</span> Karnaugh map</h2><div class="pill">GRAY CODE ORDER</div></div><p class="small muted map-note">Click any cell to cycle 0 → 1 → X. X cells can enlarge groups. Colored loops show the selected implicants. Matching colored half-loops have open ends where a term continues across opposite edges or separated map regions.</p><div id="map" class="map-container"></div><div id="legend" class="map-legend"></div></section>
-      <section class="panel expression-panel"><div class="panel-heading"><h2><span class="step">03</span> Expressions & circuits</h2><span id="status" class="small muted" role="status" aria-live="polite">Solving…</span></div>
+      <section class="panel map-panel"><div class="panel-heading"><h2>Karnaugh map</h2><div class="pill">GRAY CODE ORDER</div></div><p class="small muted map-note">Click any cell to cycle 0 → 1 → X. X cells can enlarge groups. Colored loops show the selected implicants. Matching colored half-loops have open ends where a term continues across opposite edges or separated map regions.</p><div id="map" class="map-container"></div><div id="legend" class="map-legend"></div></section>
+      <section class="panel expression-panel"><div class="panel-heading"><h2>Expressions & circuits</h2><span id="status" class="small muted" role="status" aria-live="polite">Solving…</span></div>
       <div class="tabs" role="tablist" aria-label="Expression form"><button role="tab" id="tab-minimal" data-form="minimal" aria-selected="true">Minimal</button><button role="tab" id="tab-dnf" data-form="dnf" aria-selected="false">DNF</button><button role="tab" id="tab-cnf" data-form="cnf" aria-selected="false">CNF</button><button role="tab" id="tab-nand" data-form="nand" aria-selected="false">NAND</button><button role="tab" id="tab-nor" data-form="nor" aria-selected="false">NOR</button></div>
       <div id="expression-content" role="tabpanel" aria-labelledby="tab-minimal"><div class="formula-heading"><span id="form-name" class="field-label"></span><button id="copy" class="text-button">Copy ASCIIMath</button></div><div id="formula" class="formula"></div><p id="form-note" class="small muted"></p><div class="circuit-heading"><h3>Logic circuit</h3><button id="download" class="text-button">↓ Download SVG</button></div><p class="small muted">Signals flow left to right. Dots join wires; wire jumps cross without connecting. Output circles mean inversion.</p><div id="diagram" class="diagram-container"></div></div></section>
-      <section class="panel timing-panel"><div class="panel-heading"><h2><span class="step">04</span> Timing diagram</h2><button id="download-timing" class="text-button">↓ Download SVG</button></div><p class="small muted">All inputs and output f, stepping through the truth table in binary order. Each row occupies one equal time interval; signals are ideal with no propagation delay. Crossed X bands mark unspecified outputs. Scroll horizontally for larger tables.</p><div id="timing" class="timing-container"></div></section>
+      <section class="panel timing-panel"><div class="panel-heading"><h2>Timing diagram</h2><button id="download-timing" class="text-button">↓ Download SVG</button></div><p class="small muted">All inputs and output f, stepping through the truth table in binary order. Each row occupies one equal time interval; signals are ideal with no propagation delay. Crossed X bands mark unspecified outputs. Scroll horizontally for larger tables.</p><div id="timing" class="timing-container"></div></section>
     </div>
   </section>
   <footer><span><span class="footer-mark">K</span> 2026</span><details><summary>Notation & conventions</summary><p>Inputs run from A to H, with A as the most significant bit. Rows ascend from 0 to 2ⁿ−1. The function order is Σ f(i)2ⁱ. DNF and CNF are canonical forms. Minimal is a minimum sum of products, ranked by term count then literal count. NAND and NOR use minimized SOP and POS respectively. Gates may have multiple inputs. X means don't care: the solver can choose 0 or 1 for that row. Each circuit satisfies all specified rows.</p></details>

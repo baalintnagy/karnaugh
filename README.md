@@ -1,4 +1,4 @@
-# Karnaugh Studio
+# Karnaugh Solver
 
 A single-page Boolean logic workbench for 1–8 variables. Plain HTML, CSS, and ES modules; no build step or backend.
 
