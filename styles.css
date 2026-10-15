@@ -20,7 +20,8 @@
 .input-panel{height:1200px;display:flex;flex-direction:column}
 .input-panel> :not(.truth-scroll){flex-shrink:0}
 .truth-scroll{flex:1;min-height:0;max-height:none}
-.function-panel{height:180px}
+.function-panel{height:auto;min-height:180px;overflow:visible}
+.function-panel>div:first-child{min-width:0}
 .map-panel{height:auto;min-height:0;display:flex;flex-direction:column}
 .map-panel> :not(.map-container){flex-shrink:0}
 .map-container{flex:0 0 auto;min-height:0;max-height:none}
@@ -35,4 +36,4 @@
 .timing-panel{height:auto;min-height:840px;display:flex;flex-direction:column}
 .timing-panel> :not(.timing-container){flex-shrink:0}
 .timing-container{flex:1 0 662px;min-height:662px;max-height:none;overflow:auto}
-@media(max-width:650px){.function-panel{height:220px}.timing-panel{min-height:940px}}
+@media(max-width:650px){.function-panel{min-height:220px}.timing-panel{min-height:940px}}
