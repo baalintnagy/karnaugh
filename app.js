@@ -137,8 +137,16 @@ function themeLabel(){$('theme').setAttribute('aria-label',`Switch to ${document
 const themePreference=matchMedia('(prefers-color-scheme: dark)');
 let manualTheme=['light','dark'].includes(savedTheme);
 function refreshTheme(){themeLabel();timing();if(result)renderForm()}
-themePreference.addEventListener('change',event=>{if(manualTheme)return;document.documentElement.dataset.theme=event.matches?'dark':'light';refreshTheme()});
-$('theme').onclick=()=>{manualTheme=true;document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('theme',document.documentElement.dataset.theme)}catch{}refreshTheme()};
+let themeTransition;
+function setTheme(theme){
+  themeTransition?.skipTransition();
+  const updateTheme=()=>{document.documentElement.dataset.theme=theme;refreshTheme()};
+  if(document.startViewTransition&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
+    themeTransition=document.startViewTransition(updateTheme);
+  }else updateTheme();
+}
+themePreference.addEventListener('change',event=>{if(manualTheme)return;setTheme(event.matches?'dark':'light')});
+$('theme').onclick=()=>{manualTheme=true;const theme=document.documentElement.dataset.theme==='dark'?'light':'dark';setTheme(theme);try{localStorage.setItem('theme',theme)}catch{}};
 $('copy').onclick=async()=>{
   const source=formulaSource;let copied=false;
   try{await navigator.clipboard.writeText(source);copied=true}catch{
