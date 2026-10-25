@@ -1,1 +1,16 @@
-{"name":"karnaugh-solver","version":"1.0.0","private":true,"type":"module","scripts":{"test":"node --test tests/*.test.js","dev":"node server.js"},"devDependencies":{"elkjs":"^0.12.0"}}
+{
+  "name": "karnaugh-solver",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "dev": "node server.js",
+    "format": "prettier --write \"**/*.js\" styles.css package.json",
+    "format:check": "prettier --check \"**/*.js\" styles.css package.json"
+  },
+  "devDependencies": {
+    "elkjs": "^0.12.0",
+    "prettier": "3.6.2"
+  }
+}

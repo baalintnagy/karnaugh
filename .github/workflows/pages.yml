@@ -22,11 +22,13 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run format:check
       - run: npm test
       - name: Prepare static site
         run: |
           mkdir -p _site/vendor _site/assets
           cp index.html styles.css app.js logic.js svg.js circuit.js solver-worker.js .nojekyll _site/
+          cp -R logic circuit rendering ui _site/
           cp vendor/elk.bundled.js vendor/elk-worker.min.js vendor/ELK-LICENSE.md vendor/README.md _site/vendor/
           cp assets/karnaugh-solver-social-preview.png assets/karnaugh-solver-favicon.svg _site/assets/
       - uses: actions/upload-pages-artifact@v4

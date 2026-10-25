@@ -13,6 +13,19 @@ npm test
 
 Open http://127.0.0.1:4173. Serve over HTTP rather than opening `index.html` directly because the solver uses an ES module worker. Run `npm ci` once before running tests to install the pinned ELK development dependency.
 
+Run `npm run format` to format first-party JavaScript and CSS, or `npm run format:check` to check formatting without changing files. Vendored libraries and generated files are excluded.
+
+## Code organization
+
+- `app.js` coordinates application state, user actions, and rendering.
+- `logic/` contains Boolean utilities, exact minimization, and expression construction, conversion, formatting, and evaluation. The minimizer separates prime generation, chart reduction, greedy bounds, and exact cover search.
+- `circuit/` separates netlist construction, wire routing, cached ELK layout, and SVG rendering.
+- `rendering/` contains Karnaugh map and timing SVG renderers, group styles, and shared XML escaping.
+- `ui/` handles formula presentation, MathJax integration, zoom, themes, clipboard access, and SVG downloads.
+- `logic.js`, `circuit.js`, and `svg.js` retain the public exports used by the application, worker, and tests.
+
+Pure logic and SVG generation do not depend on the DOM. Browser integrations stay in `ui/` and the application controller. New runtime modules must also be included in the static-site copy step in `.github/workflows/pages.yml`.
+
 ## GitHub Pages
 
 The `Deploy GitHub Pages` workflow tests and publishes the site on every push to `main`. It can also be run manually from the Actions tab. Deployment uses the repository's GitHub token; no secrets are required. Only the static page, JavaScript modules, styles, and vendored ELK runtime/license are published.
