@@ -39,6 +39,8 @@
 :root {
   font-family: 'DM Sans', system-ui, sans-serif;
   color-scheme: dark;
+  --header-height: 82px;
+  --header-gap: 24px;
   --bg: #101416;
   --panel: #181e21;
   --surface: #20282c;
@@ -97,7 +99,13 @@ a {
   text-decoration: none;
 }
 .topbar {
-  height: 82px;
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 100;
+  height: var(--header-height);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -144,7 +152,7 @@ a {
 }
 main {
   max-width: 1480px;
-  padding: 0 5%;
+  padding: calc(var(--header-height) + var(--header-gap)) 5% 0;
   margin: auto;
 }
 .intro {
@@ -193,7 +201,7 @@ h1 span {
 .input-panel {
   padding: 22px;
   position: sticky;
-  top: 20px;
+  top: calc(var(--header-height) + var(--header-gap));
 }
 .panel-heading {
   display: flex;
@@ -582,8 +590,9 @@ mjx-container {
   }
 }
 @media (max-width: 650px) {
-  .topbar {
-    height: 65px;
+  :root {
+    --header-height: 65px;
+    --header-gap: 18px;
   }
   .local-badge {
     display: none;
